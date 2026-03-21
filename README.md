@@ -12,10 +12,19 @@
 docker compose up --build
 ```
 
+Если нужно пересобрать контейнеры без кэша:
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
 Сервисы будут доступны по адресам:
 
 - frontend: `http://localhost:5173`
 - backend: `http://localhost:3000`
+- swagger: `http://localhost:3000/docs`
+- redoc: `http://localhost:3000/redoc`
 - postgres: `localhost:5433`
 
 ## Что внутри

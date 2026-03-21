@@ -19,7 +19,11 @@ class TaskCreate(BaseModel):
 
 app = FastAPI(
     title="Campus Exchange Hub API",
+    description="API для Campus Exchange Hub: healthcheck, просмотр задач и создание заявок.",
     version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 app.add_middleware(
