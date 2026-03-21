@@ -115,7 +115,7 @@ const TaskDetail = () => {
 
   useEffect(() => {
     if (actionModal === "message" && chatId) {
-      void chatsService.markRead(chatId);
+      void chatsService.markRead(chatId).catch(() => undefined);
     }
   }, [actionModal, chatId]);
 

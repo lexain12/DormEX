@@ -183,6 +183,14 @@
   - добавлены controlled empty-states для пустой гистограммы.
 - `TaskDetail`:
   - добавлены `retry` для ошибок загрузки истории контрпредложений и сообщений в чате.
+  - добавлен безопасный `markRead` без unhandled rejection при временных сбоях сети.
 - `TopNav`:
   - добавлена обработка ошибок при `markRead`;
   - включён polling списка уведомлений, пока popover открыт.
+- `interaction-store`:
+  - удалены неиспользуемые legacy-сущности (`localTasks`, `taskInteractions`, локальные `notifications`);
+  - оставлены только актуальные данные UI-состояния (`selectedDorm`).
+- Фильтрация по общежитию:
+  - selector в `TopNav` привязан к `GET /reference/dormitories` (с fallback-списком);
+  - в ленту передаётся `dormitory_id` через query string и `GET /tasks`;
+  - в модалке создания отображается общежитие пользователя из профиля, а не временный локальный фильтр.
