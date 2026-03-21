@@ -21,10 +21,19 @@ fi
 # Stop and remove existing containers
 echo "Stopping and removing existing containers..."
 if command -v docker-compose &> /dev/null; then
-    docker-compose down || true
+    docker-compose down --remove-orphans || true
 else
-    docker compose down || true
+    docker compose down --remove-orphans || true
 fi
+
+# Force-remove any lingering containers with conflicting names
+echo "Removing any conflicting containers..."
+for name in campus_exchange_postgres campus_exchange_liquibase campus_exchange_backend campus_exchange_frontend; do
+    if docker ps -a --format '{{.Names}}' | grep -q "^${name}$"; then
+        echo "  Removing container: ${name}"
+        docker rm -f "${name}" || true
+    fi
+done
 
 # Remove old images
 echo "Removing old Docker images..."
