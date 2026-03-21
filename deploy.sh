@@ -30,9 +30,9 @@ docker build -t campus-exchange-hub-01-frontend:latest ./frontend
 # Start services with docker-compose
 echo "Starting services..."
 if command -v docker-compose &> /dev/null; then
-    docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    docker-compose up -d --build
 else
-    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+    docker compose up -d --build
 fi
 
 echo "Deployment completed successfully!"
