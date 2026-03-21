@@ -2,6 +2,7 @@ import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from 
 import type { ApiErrorShape, AuthVerifyCodeResponse } from "@/api/types";
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1").replace(/\/$/, "");
+const DEFAULT_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 15000);
 
 export class ApiError extends Error {
   status: number;
@@ -24,6 +25,7 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   query?: Record<string, string | number | boolean | null | undefined>;
   disableRefreshRetry?: boolean;
+  timeoutMs?: number;
 }
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -89,12 +91,26 @@ function getTokenByMode(authMode: AuthMode): string | null {
   return null;
 }
 
+function normalizeFetchError(error: unknown): ApiError {
+  if (error instanceof ApiError) {
+    return error;
+  }
+
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return new ApiError("Превышено время ожидания ответа сервера.", 408, "request_timeout");
+  }
+
+  return new ApiError("Не удалось выполнить запрос. Проверьте соединение и повторите попытку.", 0, "network_error");
+}
+
 async function runFetch<T>(path: string, options: RequestOptions = {}): Promise<{ response: Response; data?: T }> {
   const {
     authMode = "access",
     body,
     headers,
     query,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    signal,
     ...rest
   } = options;
 
@@ -110,12 +126,41 @@ async function runFetch<T>(path: string, options: RequestOptions = {}): Promise<
     finalHeaders.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}${buildQuery(query)}`, {
-    ...rest,
-    headers: finalHeaders,
-    credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutId: ReturnType<typeof setTimeout> | null = (
+    typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null
+  );
+
+  const onExternalAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}${buildQuery(query)}`, {
+      ...rest,
+      headers: finalHeaders,
+      credentials: "include",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw normalizeFetchError(error);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (signal) {
+      signal.removeEventListener("abort", onExternalAbort);
+    }
+  }
 
   if (!response.ok) {
     return { response };
@@ -142,7 +187,9 @@ export async function refreshAccessToken(): Promise<string | null> {
         });
 
         if (!response.ok || !data) {
-          clearAuthTokens();
+          if (response.status === 401 || response.status === 403) {
+            clearAuthTokens();
+          }
           return null;
         }
 
@@ -157,7 +204,6 @@ export async function refreshAccessToken(): Promise<string | null> {
         setAuthTokens({ accessToken: nextAccess, refreshToken: nextRefresh });
         return nextAccess;
       } catch {
-        clearAuthTokens();
         return null;
       } finally {
         refreshPromise = null;

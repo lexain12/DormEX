@@ -194,3 +194,7 @@
   - selector в `TopNav` привязан к `GET /reference/dormitories` (с fallback-списком);
   - в ленту передаётся `dormitory_id` через query string и `GET /tasks`;
   - в модалке создания отображается общежитие пользователя из профиля, а не временный локальный фильтр.
+- API client:
+  - добавлен timeout запросов (`VITE_API_TIMEOUT_MS`, default 15s);
+  - добавлена явная нормализация сетевых/timeout ошибок в `ApiError`;
+  - refresh-сценарий не очищает токены при временных сетевых сбоях (очистка только при 401/403).
