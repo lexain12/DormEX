@@ -1,19 +1,31 @@
 import json
+import os
 from datetime import datetime, timedelta, timezone
+from math import ceil
 from typing import Any
 from uuid import uuid4
 
 from ..core.auth_tokens import hash_refresh_token, hash_verification_code
 from ..core.database import get_connection
-from ..core.exceptions import DomainValidationError, ForbiddenError
+from ..core.exceptions import DomainValidationError, ForbiddenError, TooManyRequestsError
 
 
 UTC = timezone.utc
 
 
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class PlatformRepository:
     demo_email_domain = "campus.test"
-    demo_code = "123456"
+
+    def __init__(self) -> None:
+        self.email_code_ttl_sec = int(os.getenv("EMAIL_CODE_TTL_SEC", "600"))
+        self.email_code_resend_interval_sec = int(os.getenv("EMAIL_CODE_RESEND_INTERVAL_SEC", "60"))
+        self.auth_allow_any_email_domain = _parse_bool(os.getenv("AUTH_ALLOW_ANY_EMAIL_DOMAIN"), default=False)
 
     def ensure_seed_data(self) -> None:
         with get_connection() as connection:
@@ -113,13 +125,43 @@ class PlatformRepository:
 
             connection.commit()
 
-    def create_email_code(self, email: str, university_id: int) -> dict[str, Any]:
-        expires_at = datetime.now(UTC) + timedelta(minutes=10)
-        code = self.demo_code
+    def create_email_code(self, email: str, university_id: int, code: str) -> dict[str, Any]:
+        normalized_email = email.lower().strip()
+        now = datetime.now(UTC)
+        expires_at = now + timedelta(seconds=self.email_code_ttl_sec)
         code_id = str(uuid4())
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT created_at
+                    FROM email_verification_codes
+                    WHERE email = %s
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """,
+                    (normalized_email,),
+                )
+                latest_request = cursor.fetchone()
+
+                if latest_request is not None:
+                    seconds_since_last_request = (now - latest_request["created_at"]).total_seconds()
+                    if seconds_since_last_request < self.email_code_resend_interval_sec:
+                        retry_after_sec = ceil(self.email_code_resend_interval_sec - seconds_since_last_request)
+                        raise TooManyRequestsError(
+                            f"Повторный запрос кода можно отправить через {retry_after_sec} сек."
+                        )
+
+                cursor.execute(
+                    """
+                    UPDATE email_verification_codes
+                    SET used_at = CURRENT_TIMESTAMP
+                    WHERE email = %s
+                      AND used_at IS NULL
+                    """,
+                    (normalized_email,),
+                )
                 cursor.execute(
                     """
                     INSERT INTO email_verification_codes (
@@ -133,7 +175,7 @@ class PlatformRepository:
                     """,
                     (
                         code_id,
-                        email.lower(),
+                        normalized_email,
                         hash_verification_code(code),
                         university_id,
                         expires_at,
@@ -142,10 +184,24 @@ class PlatformRepository:
             connection.commit()
 
         return {
+            "id": code_id,
             "status": "code_sent",
-            "expires_in_sec": 600,
-            "debug_code": code,
+            "expires_in_sec": self.email_code_ttl_sec,
         }
+
+    def invalidate_email_code(self, code_id: str) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE email_verification_codes
+                    SET used_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                      AND used_at IS NULL
+                    """,
+                    (code_id,),
+                )
+            connection.commit()
 
     def get_university_by_email(self, email: str) -> dict[str, Any] | None:
         domain = email.lower().split("@")[-1].strip()
@@ -161,30 +217,50 @@ class PlatformRepository:
                     """,
                     (domain,),
                 )
+                university = cursor.fetchone()
+                if university is not None:
+                    return university
+
+                if not self.auth_allow_any_email_domain:
+                    return None
+
+                cursor.execute(
+                    """
+                    SELECT id, name, slug, email_domain
+                    FROM universities
+                    WHERE email_domain = %s
+                      AND is_active = TRUE
+                    """,
+                    (self.demo_email_domain,),
+                )
                 return cursor.fetchone()
 
     def verify_email_code_and_get_user(self, email: str, code: str) -> dict[str, Any]:
         email = email.lower().strip()
+        normalized_code = code.strip()
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, university_id
+                    SELECT id, university_id, code_hash
                     FROM email_verification_codes
                     WHERE email = %s
-                      AND code_hash = %s
                       AND used_at IS NULL
                       AND expires_at > CURRENT_TIMESTAMP
                     ORDER BY created_at DESC
                     LIMIT 1
+                    FOR UPDATE
                     """,
-                    (email, hash_verification_code(code)),
+                    (email,),
                 )
                 code_row = cursor.fetchone()
 
                 if code_row is None:
-                    raise DomainValidationError("Неверный или просроченный код подтверждения")
+                    raise DomainValidationError("Код подтверждения просрочен или не запрошен")
+
+                if code_row["code_hash"] != hash_verification_code(normalized_code):
+                    raise DomainValidationError("Неверный код подтверждения")
 
                 cursor.execute(
                     """
@@ -615,11 +691,6 @@ class PlatformRepository:
                         d.id AS dormitory_id,
                         d.name AS dormitory_name,
                         chat.id AS chat_id,
-                        assignment.id AS assignment_id,
-                        assignment.performer_id AS assignment_performer_id,
-                        completion.status AS completion_status,
-                        completion.customer_confirmed_at,
-                        completion.performer_confirmed_at,
                         ao.id AS accepted_offer_id,
                         ao.performer_id AS accepted_offer_performer_id,
                         ao.message AS accepted_offer_message,
@@ -633,8 +704,6 @@ class PlatformRepository:
                     JOIN universities uni ON uni.id = t.university_id
                     JOIN dormitories d ON d.id = t.dormitory_id
                     LEFT JOIN task_chats chat ON chat.task_id = t.id
-                    LEFT JOIN task_assignments assignment ON assignment.task_id = t.id
-                    LEFT JOIN task_completion_confirmations completion ON completion.task_assignment_id = assignment.id
                     LEFT JOIN task_offers ao ON ao.id = t.accepted_offer_id
                     LEFT JOIN users performer ON performer.id = ao.performer_id
                     WHERE t.id = %s
@@ -675,11 +744,6 @@ class PlatformRepository:
             row["customer_id"] != current_user_id
             and row["status"] in ("open", "offers")
             and (own_offer is None or own_offer["status"] in ("rejected", "withdrawn"))
-        )
-        task["completion_confirmation_status"] = row["completion_status"]
-        task["completion_confirmed_by_me"] = bool(
-            (row["customer_id"] == current_user_id and row["customer_confirmed_at"] is not None)
-            or (row["assignment_performer_id"] == current_user_id and row["performer_confirmed_at"] is not None)
         )
         task["accepted_offer"] = None
 
