@@ -56,6 +56,24 @@ else
     docker compose up -d
 fi
 
+# Update nginx config
+NGINX_CONF_SRC="$(cd "$(dirname "$0")" && pwd)/nginx/nginx.conf"
+NGINX_CONF_DST="/etc/nginx/sites-enabled/my_site"
+
+if [ -f "$NGINX_CONF_SRC" ]; then
+    echo "Updating nginx config at ${NGINX_CONF_DST}..."
+    sudo cp "$NGINX_CONF_SRC" "$NGINX_CONF_DST"
+    if sudo nginx -t; then
+        sudo systemctl reload nginx
+        echo "nginx reloaded successfully."
+    else
+        echo "Error: nginx config test failed. Reload skipped."
+        exit 1
+    fi
+else
+    echo "Warning: nginx config not found at ${NGINX_CONF_SRC}, skipping nginx update."
+fi
+
 echo "Deployment completed successfully!"
-echo "Access the application at http://localhost/dormex"
-echo "Backend API is available at http://localhost/api"
+echo "Access the application at https://yjhv-solutions.ru/dormex"
+echo "Backend API is available at https://yjhv-solutions.ru/dormex/api"

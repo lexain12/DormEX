@@ -13,6 +13,15 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      // Mirrors the server nginx rule:
+      // /dormex/api/... → http://localhost:3000/api/...
+      "/dormex/api": {
+        target: "http://localhost:3000",
+        rewrite: (path) => path.replace(/^\/dormex\/api/, "/api"),
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
