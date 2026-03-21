@@ -7,6 +7,13 @@ interface FeaturedCardProps {
 }
 
 export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
+  const urgencyLabel = task.urgency === 'urgent'
+    ? 'Срочно'
+    : task.urgency === 'today'
+      ? 'Сегодня'
+      : task.urgency === 'week'
+        ? 'На неделе'
+        : 'Без срока';
 
   return (
     <Link
@@ -18,7 +25,7 @@ export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
           <div className="flex items-center gap-2 mb-2">
             <span className="chip urgency-urgent text-xs px-2 py-0.5 flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              Срочно
+              {urgencyLabel}
             </span>
             <span className="text-xs text-muted-foreground">{task.dorm}</span>
           </div>
@@ -30,7 +37,7 @@ export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
           </p>
         </div>
         <div className="text-right shrink-0 ml-6">
-          <div className="text-2xl font-bold text-foreground">{task.price} ₽</div>
+          <div className="text-2xl font-bold text-foreground">{task.price ? `${task.price} ₽` : 'Договорная'}</div>
           <div className="text-xs text-muted-foreground mt-1">{task.offersCount} предложения</div>
         </div>
       </div>
