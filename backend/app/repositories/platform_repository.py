@@ -21,6 +21,7 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
 
 class PlatformRepository:
     demo_email_domain = "campus.test"
+    default_university_domain = "phystech.edu"
 
     def __init__(self) -> None:
         self.email_code_ttl_sec = int(os.getenv("EMAIL_CODE_TTL_SEC", "600"))
@@ -37,7 +38,21 @@ class PlatformRepository:
                     ON CONFLICT (email_domain)
                     DO UPDATE SET
                         name = EXCLUDED.name,
-                        slug = EXCLUDED.slug
+                        slug = EXCLUDED.slug,
+                        is_active = TRUE
+                    """,
+                    ("МФТИ", "mipt", self.default_university_domain),
+                )
+
+                cursor.execute(
+                    """
+                    INSERT INTO universities (name, slug, email_domain)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (email_domain)
+                    DO UPDATE SET
+                        name = EXCLUDED.name,
+                        slug = EXCLUDED.slug,
+                        is_active = TRUE
                     RETURNING id
                     """,
                     ("Демо университет", "demo-university", self.demo_email_domain),
