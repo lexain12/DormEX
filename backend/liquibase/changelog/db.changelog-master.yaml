@@ -57,3 +57,10 @@ databaseChangeLog:
                   defaultValueComputed: CURRENT_TIMESTAMP
                   constraints:
                     nullable: false
+  - changeSet:
+      id: 002-rebuild-mvp-schema
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/002_rebuild_mvp_schema.sql
+            relativeToChangelogFile: true
