@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .controllers.auth_controller import router as auth_router
 from .controllers.health_controller import router as health_router
 from .controllers.task_controller import router as task_router
+from .controllers.user_controller import router as user_router
+from .core.error_handlers import register_error_handlers
 
 
 app = FastAPI(
@@ -23,5 +26,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+register_error_handlers(app)
 app.include_router(health_router)
+app.include_router(auth_router)
+app.include_router(user_router)
 app.include_router(task_router)

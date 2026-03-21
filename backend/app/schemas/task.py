@@ -13,22 +13,13 @@ TaskStatus = Literal["open", "offers", "in_progress", "completed", "cancelled"]
 TaskScope = Literal["university", "dormitory"]
 
 
-class TaskCreateRequest(BaseModel):
-    customer_id: int
-    dormitory_id: int
-    title: str
-    description: str
-    category: TaskCategory
-    urgency: TaskUrgency
+class _TaskPaymentValidatedModel(BaseModel):
     payment_type: TaskPaymentType
     price_amount: int | None = None
     barter_description: str | None = None
-    visibility: TaskVisibility = "university"
-    currency: str = "RUB"
-    starts_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_payment(self) -> "TaskCreateRequest":
+    def validate_payment(self) -> "_TaskPaymentValidatedModel":
         if self.payment_type == "fixed_price":
             if self.price_amount is None or self.price_amount <= 0:
                 raise ValueError("price_amount must be a positive integer for fixed_price")
@@ -46,6 +37,34 @@ class TaskCreateRequest(BaseModel):
                 raise ValueError("barter_description is required for barter")
 
         return self
+
+
+class TaskCreateRequest(_TaskPaymentValidatedModel):
+    dormitory_id: int
+    title: str
+    description: str
+    category: TaskCategory
+    urgency: TaskUrgency
+    visibility: TaskVisibility = "university"
+    currency: str = "RUB"
+    starts_at: datetime | None = None
+
+
+class TaskUpdateRequest(TaskCreateRequest):
+    pass
+
+
+class TaskCancelRequest(BaseModel):
+    reason: str
+
+
+class TaskDisputeRequest(BaseModel):
+    comment: str
+
+
+class TaskCompletionResponse(BaseModel):
+    task_id: int
+    confirmation_status: str
 
 
 class UserSummaryResponse(BaseModel):
@@ -67,6 +86,7 @@ class DormitorySummaryResponse(BaseModel):
 class AcceptedOfferPerformerResponse(BaseModel):
     id: int
     full_name: str
+    rating_avg: Decimal | float | int | None = None
 
 
 class AcceptedOfferResponse(BaseModel):
@@ -80,11 +100,15 @@ class AcceptedOfferResponse(BaseModel):
     performer: AcceptedOfferPerformerResponse
 
 
+class CategoryAnalyticsResponse(BaseModel):
+    total_tasks: int
+    open_tasks_count: int
+    completed_tasks_count: int
+    avg_fixed_price: float | None = None
+
+
 class TaskSummaryResponse(BaseModel):
     id: int
-    customer_id: int
-    university_id: int
-    dormitory_id: int
     title: str
     description: str
     category: TaskCategory
@@ -110,7 +134,11 @@ class TaskSummaryResponse(BaseModel):
 
 
 class TaskDetailResponse(TaskSummaryResponse):
+    author: UserSummaryResponse
     accepted_offer: AcceptedOfferResponse | None = None
+    can_apply: bool
+    can_choose_performer: bool
+    category_analytics: CategoryAnalyticsResponse | None = None
 
 
 class TaskListResponse(BaseModel):
