@@ -59,14 +59,21 @@ Backend при старте подготавливает локальные demo
 - несколько задач в состояниях `open`, `offers`, `in_progress`, `completed`, `cancelled`;
 - отклики, чат, отзывы и уведомления.
 
-Локальная авторизация теперь отправляет настоящий одноразовый код по SMTP в MailHog:
+По умолчанию локальная авторизация отправляет одноразовый код по SMTP в MailHog:
 
 - открой `http://localhost:8025`;
 - запроси код для email с доменом `campus.test`;
 - письмо появится в интерфейсе MailHog;
 - возьми код из письма и введи его во frontend.
 
-По умолчанию backend использует локальный SMTP MailHog, но при необходимости можно переопределить:
+Если хочешь использовать настоящую почту, а не MailHog:
+
+1. Скопируй `.env.example` в `.env`
+2. Заполни в `.env` свои SMTP-настройки и почтовый ключ/app password
+3. Оставь `AUTH_ALLOW_ANY_EMAIL_DOMAIN=true`, если хочешь входить с обычных email вроде `mail.ru`, `gmail.com`, `yandex.ru`
+4. Перезапусти проект: `docker compose up --build -d`
+
+В `.env.example` уже оставлены поля, куда нужно вставить секреты:
 
 - `SMTP_HOST`
 - `SMTP_PORT`
@@ -78,6 +85,13 @@ Backend при старте подготавливает локальные demo
 - `SMTP_FROM_NAME`
 - `EMAIL_CODE_TTL_SEC`
 - `EMAIL_CODE_RESEND_INTERVAL_SEC`
+- `AUTH_ALLOW_ANY_EMAIL_DOMAIN`
+
+Для популярных провайдеров можно использовать такие стартовые значения:
+
+- Mail.ru: `SMTP_HOST=smtp.mail.ru`, `SMTP_PORT=465`, `SMTP_USE_SSL=true`
+- Yandex: `SMTP_HOST=smtp.yandex.ru`, `SMTP_PORT=465`, `SMTP_USE_SSL=true`
+- Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USE_TLS=true`
 
 ## Миграции
 

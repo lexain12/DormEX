@@ -33,7 +33,7 @@ const AuthPage = () => {
     const normalizedEmail = email.trim();
 
     if (!normalizedEmail) {
-      setError("Введите университетский email");
+      setError("Введите email");
       return;
     }
 
@@ -66,7 +66,7 @@ const AuthPage = () => {
     const normalizedEmail = email.trim();
 
     if (!normalizedEmail) {
-      setError("Введите университетский email");
+      setError("Введите email");
       setStep("email");
       return;
     }
@@ -127,7 +127,7 @@ const AuthPage = () => {
             <span className="font-semibold text-foreground text-[15px]">DormHub</span>
           </Link>
 
-          <h1 className="text-xl font-semibold text-foreground mt-4">Вход по университетской почте</h1>
+          <h1 className="text-xl font-semibold text-foreground mt-4">Вход по email</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {step === "email"
               ? "Введите email, мы отправим код подтверждения."

@@ -55,6 +55,7 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://campus_user:campus_pass@postgres:5432/campus_exchange
+      AUTH_ALLOW_ANY_EMAIL_DOMAIN: ${AUTH_ALLOW_ANY_EMAIL_DOMAIN:-false}
       EMAIL_CODE_TTL_SEC: ${EMAIL_CODE_TTL_SEC:-600}
       EMAIL_CODE_RESEND_INTERVAL_SEC: ${EMAIL_CODE_RESEND_INTERVAL_SEC:-60}
       SMTP_HOST: ${SMTP_HOST:-mailhog}
