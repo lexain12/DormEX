@@ -35,6 +35,9 @@ services:
       - ./backend/liquibase/changelog:/liquibase/changelog
 
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: campus-exchange-hub-01-backend:latest
     pull_policy: never
     container_name: campus_exchange_backend
@@ -49,6 +52,9 @@ services:
       - "3000:3000"
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     image: campus-exchange-hub-01-frontend:latest
     pull_policy: never
     container_name: campus_exchange_frontend
