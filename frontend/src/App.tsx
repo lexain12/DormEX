@@ -8,24 +8,27 @@ import TaskDetail from "./pages/TaskDetail.tsx";
 import Profile from "./pages/Profile.tsx";
 import Analytics from "./pages/Analytics.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import { InteractionStoreProvider } from "@/context/interaction-store";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/task/:id" element={<TaskDetail />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/analytics" element={<Analytics />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <InteractionStoreProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/task/:id" element={<TaskDetail />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/analytics" element={<Analytics />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </InteractionStoreProvider>
   </QueryClientProvider>
 );
 
