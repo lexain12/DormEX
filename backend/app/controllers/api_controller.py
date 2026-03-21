@@ -1,0 +1,358 @@
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Request
+
+from ..core.auth_tokens import extract_bearer_token
+from ..schemas.api import (
+    CancelTaskRequest,
+    ChatMessageRequest,
+    CreateCounterOfferRequest,
+    CreateOfferRequest,
+    CreateTaskRequest,
+    EmailCodeRequest,
+    EmailCodeVerifyRequest,
+    OpenDisputeRequest,
+    RefreshTokenRequest,
+    UpdateMeRequest,
+    UpdateOfferRequest,
+)
+from ..services.current_user_service import CurrentUserContext
+from ..services.platform_service import PlatformService
+from .dependencies import get_current_user_context
+
+
+router = APIRouter(prefix="/api/v1")
+platform_service = PlatformService()
+
+
+@router.post("/auth/email/request-code")
+def request_email_code(payload: EmailCodeRequest) -> dict:
+    return platform_service.request_email_code(payload.email)
+
+
+@router.post("/auth/email/verify-code")
+def verify_email_code(payload: EmailCodeVerifyRequest, request: Request) -> dict:
+    return platform_service.verify_email_code(
+        payload.email,
+        payload.code,
+        user_agent=request.headers.get("User-Agent"),
+        ip=request.client.host if request.client else None,
+    )
+
+
+@router.post("/auth/refresh")
+def refresh_auth_token(payload: RefreshTokenRequest, request: Request) -> dict:
+    refresh_token = extract_bearer_token(request.headers.get("Authorization")) or payload.refresh_token
+    return platform_service.refresh_access_token(refresh_token)
+
+
+@router.post("/auth/logout")
+def logout(request: Request) -> dict:
+    refresh_token = extract_bearer_token(request.headers.get("Authorization"))
+    return platform_service.logout(refresh_token)
+
+
+@router.get("/me")
+def get_me(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_me(current_user)
+
+
+@router.patch("/me")
+def update_me(
+    payload: UpdateMeRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.update_me(current_user, payload.model_dump())
+
+
+@router.get("/reference/dormitories")
+def list_dormitories(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_dormitories(current_user)
+
+
+@router.get("/users/{user_id}")
+def get_user_profile(
+    user_id: int,
+    _: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_user_profile(user_id)
+
+
+@router.get("/users/{user_id}/reviews")
+def list_user_reviews(
+    user_id: int,
+    _: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_user_reviews(user_id)
+
+
+@router.get("/users/{user_id}/tasks")
+def list_user_tasks(
+    user_id: int,
+    role: str = Query(default="customer"),
+    status: str = Query(default="active"),
+    _: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
+) -> list[dict]:
+    return platform_service.list_user_tasks(user_id, role, status)
+
+
+@router.get("/tasks")
+def list_tasks(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    scope: str | None = None,
+    dormitory_id: int | None = None,
+    category: str | None = None,
+    status: str | None = None,
+    urgency: str | None = None,
+    payment_type: str | None = None,
+    search: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    return platform_service.list_tasks(
+        current_user,
+        {
+            "scope": scope,
+            "dormitory_id": dormitory_id,
+            "category": category,
+            "status": status,
+            "urgency": urgency,
+            "payment_type": payment_type,
+            "search": search,
+        },
+        limit,
+        offset,
+    )
+
+
+@router.post("/tasks")
+def create_task(
+    payload: CreateTaskRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.create_task(current_user, payload.model_dump())
+
+
+@router.get("/tasks/{task_id}")
+def get_task_detail(
+    task_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_task_detail(task_id, current_user)
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(
+    task_id: int,
+    payload: CancelTaskRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.cancel_task(task_id, current_user, payload.reason)
+
+
+@router.get("/me/tasks")
+def list_my_tasks(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    role: str = Query(default="customer"),
+    status: str = Query(default="active"),
+) -> list[dict]:
+    return platform_service.list_my_tasks(current_user, role, status)
+
+
+@router.get("/tasks/{task_id}/offers")
+def list_task_offers(
+    task_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_task_offers(task_id, current_user)
+
+
+@router.post("/tasks/{task_id}/offers")
+def create_offer(
+    task_id: int,
+    payload: CreateOfferRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.create_offer(task_id, current_user, payload.model_dump())
+
+
+@router.patch("/offers/{offer_id}")
+def update_offer(
+    offer_id: int,
+    payload: UpdateOfferRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.update_offer(offer_id, current_user, payload.model_dump())
+
+
+@router.post("/offers/{offer_id}/withdraw")
+def withdraw_offer(
+    offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.withdraw_offer(offer_id, current_user)
+
+
+@router.post("/offers/{offer_id}/accept")
+def accept_offer(
+    offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.accept_offer(offer_id, current_user)
+
+
+@router.post("/offers/{offer_id}/reject")
+def reject_offer(
+    offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.reject_offer(offer_id, current_user)
+
+
+@router.get("/offers/{offer_id}/counter-offers")
+def list_counter_offers(
+    offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_counter_offers(offer_id, current_user)
+
+
+@router.post("/offers/{offer_id}/counter-offers")
+def create_counter_offer(
+    offer_id: int,
+    payload: CreateCounterOfferRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.create_counter_offer(offer_id, current_user, payload.model_dump())
+
+
+@router.post("/counter-offers/{counter_offer_id}/accept")
+def accept_counter_offer(
+    counter_offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.accept_counter_offer(counter_offer_id, current_user)
+
+
+@router.post("/counter-offers/{counter_offer_id}/reject")
+def reject_counter_offer(
+    counter_offer_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.reject_counter_offer(counter_offer_id, current_user)
+
+
+@router.get("/chats")
+def list_chats(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_chats(current_user)
+
+
+@router.get("/chats/{chat_id}")
+def get_chat(
+    chat_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_chat(chat_id, current_user)
+
+
+@router.get("/chats/{chat_id}/messages")
+def list_chat_messages(
+    chat_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    limit: int = Query(default=50, ge=1, le=100),
+    before_message_id: int | None = None,
+) -> dict:
+    return platform_service.list_chat_messages(
+        chat_id,
+        current_user,
+        limit=limit,
+        before_message_id=before_message_id,
+    )
+
+
+@router.post("/chats/{chat_id}/messages")
+def send_chat_message(
+    chat_id: int,
+    payload: ChatMessageRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.send_chat_message(chat_id, current_user, payload.body)
+
+
+@router.post("/chats/{chat_id}/read")
+def mark_chat_read(
+    chat_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.mark_chat_read(chat_id, current_user)
+
+
+@router.post("/tasks/{task_id}/complete-request")
+def request_task_completion(
+    task_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.request_task_completion(task_id, current_user)
+
+
+@router.post("/tasks/{task_id}/confirm-completion")
+def confirm_task_completion(
+    task_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.confirm_task_completion(task_id, current_user)
+
+
+@router.post("/tasks/{task_id}/open-dispute")
+def open_task_dispute(
+    task_id: int,
+    payload: OpenDisputeRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.open_task_dispute(task_id, current_user, payload.comment)
+
+
+@router.get("/notifications")
+def list_notifications(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    status: str = Query(default="all"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> dict:
+    return platform_service.list_notifications(current_user, status, limit, offset)
+
+
+@router.get("/notifications/unread-count")
+def unread_notifications_count(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_unread_notifications_count(current_user)
+
+
+@router.post("/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.mark_notification_read(notification_id, current_user)
+
+
+@router.post("/notifications/read-all")
+def mark_all_notifications_read(
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.mark_all_notifications_read(current_user)
+
+
+@router.get("/analytics/categories/{category}")
+def get_category_analytics(
+    category: str,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.get_category_analytics(category, current_user)

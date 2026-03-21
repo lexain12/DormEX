@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .exceptions import DomainValidationError
+from .exceptions import AuthenticationError, DomainValidationError, ForbiddenError
 
 
 def build_error_payload(
@@ -25,6 +25,26 @@ def build_error_payload(
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AuthenticationError)
+    async def authentication_handler(_, exc: AuthenticationError) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            content=build_error_payload(
+                code="unauthorized",
+                message=str(exc),
+            ),
+        )
+
+    @app.exception_handler(ForbiddenError)
+    async def forbidden_handler(_, exc: ForbiddenError) -> JSONResponse:
+        return JSONResponse(
+            status_code=403,
+            content=build_error_payload(
+                code="forbidden",
+                message=str(exc),
+            ),
+        )
+
     @app.exception_handler(DomainValidationError)
     async def domain_validation_handler(_, exc: DomainValidationError) -> JSONResponse:
         return JSONResponse(

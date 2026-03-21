@@ -1,10 +1,28 @@
 import { Clock, TrendingUp, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { SAMPLE_TASKS, CATEGORIES } from '@/lib/data';
+import { CATEGORIES, type Task } from '@/lib/data';
 
-export function RightSidebar() {
-  const urgentTasks = SAMPLE_TASKS.filter(t => t.urgency === 'urgent' || t.urgency === 'today').slice(0, 3);
+interface RightSidebarProps {
+  tasks: Task[];
+}
+
+export function RightSidebar({ tasks }: RightSidebarProps) {
+  const urgentTasks = tasks.filter((task) => task.urgency === 'urgent' || task.urgency === 'today').slice(0, 3);
   const hotCategories = CATEGORIES.filter(c => c.id !== 'all').slice(0, 5);
+
+  const activeTasksCount = tasks.filter((task) => (
+    task.status === 'open' || task.status === 'offers' || task.status === 'progress'
+  )).length;
+
+  const completedToday = tasks.filter((task) => task.status === 'done').length;
+  const pricedTasks = tasks.filter((task) => typeof task.price === 'number');
+  const averagePrice = pricedTasks.length > 0
+    ? `${Math.round(pricedTasks.reduce((sum, task) => sum + (task.price ?? 0), 0) / pricedTasks.length)} ₽`
+    : '—';
+
+  const averageRating = tasks.length > 0
+    ? (tasks.reduce((sum, task) => sum + task.requesterRating, 0) / tasks.length).toFixed(1)
+    : '—';
 
   return (
     <aside className="w-80 shrink-0 space-y-4">
@@ -47,15 +65,19 @@ export function RightSidebar() {
         </div>
         <div className="space-y-2">
           {hotCategories.map((cat) => (
-            <div key={cat.id} className="flex items-center justify-between p-2.5 rounded-lg hover:bg-accent transition-colors cursor-pointer">
+            <Link
+              key={cat.id}
+              to={`/?category=${cat.id}`}
+              className="flex items-center justify-between p-2.5 rounded-lg hover:bg-accent transition-colors"
+            >
               <div className="flex items-center gap-2.5">
                 <span className="text-base">{cat.icon}</span>
                 <span className="text-sm text-foreground">{cat.label}</span>
               </div>
               <span className="text-xs text-muted-foreground">
-                {Math.floor(Math.random() * 20 + 5)} заявок
+                {tasks.filter((task) => task.category === cat.id).length} заявок
               </span>
-            </div>
+            </Link>
           ))}
         </div>
       </div>
@@ -65,10 +87,10 @@ export function RightSidebar() {
         <h3 className="font-semibold text-sm text-foreground mb-3">Статистика кампуса</h3>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: 'Активных заявок', value: '47' },
-            { label: 'Сделок сегодня', value: '12' },
-            { label: 'Средняя цена', value: '380 ₽' },
-            { label: 'Средний рейтинг', value: '4.7' },
+            { label: 'Активных заявок', value: String(activeTasksCount) },
+            { label: 'Сделок сегодня', value: String(completedToday) },
+            { label: 'Средняя цена', value: averagePrice },
+            { label: 'Средний рейтинг', value: averageRating },
           ].map((stat) => (
             <div key={stat.label} className="p-2.5 rounded-lg bg-secondary">
               <div className="text-lg font-semibold text-foreground">{stat.value}</div>
