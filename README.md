@@ -95,4 +95,4 @@ Backend при старте подготавливает локальные demo
 
 ## Миграции
 
-Liquibase changelog лежит в [backend/liquibase/changelog/db.changelog-master.yaml](/Users/pelmeshka127/Desktop/Хакатоны/campus-exchange-hub-01/backend/liquibase/changelog/db.changelog-master.yaml).
+Liquibase changelog лежит в `backend/liquibase/changelog/db.changelog-master.yaml`.

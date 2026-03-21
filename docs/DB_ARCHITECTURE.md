@@ -1,6 +1,6 @@
 # Database Architecture
 
-Документ фиксирует итоговую реляционную схему MVP для `Campus Exchange Hub` на основе [API.md](/Users/pelmeshka127/Desktop/Хакатоны/campus-exchange-hub-01/docs/API.md).
+Документ фиксирует итоговую реляционную схему MVP для `Campus Exchange Hub` на основе `docs/API.md`.
 
 ## 1. Контур домена
 
@@ -65,5 +65,5 @@
 
 Фактическая схема БД заведена в Liquibase:
 
-- [db.changelog-master.yaml](/Users/pelmeshka127/Desktop/Хакатоны/campus-exchange-hub-01/backend/liquibase/changelog/db.changelog-master.yaml)
-- [002_rebuild_mvp_schema.sql](/Users/pelmeshka127/Desktop/Хакатоны/campus-exchange-hub-01/backend/liquibase/changelog/sql/002_rebuild_mvp_schema.sql)
+- `backend/liquibase/changelog/db.changelog-master.yaml`
+- `backend/liquibase/changelog/sql/002_rebuild_mvp_schema.sql`

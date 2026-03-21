@@ -66,7 +66,7 @@ services:
       SMTP_USE_SSL: ${SMTP_USE_SSL:-false}
       SMTP_TIMEOUT_SEC: ${SMTP_TIMEOUT_SEC:-10}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-no-reply@campus.test}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-DormHub}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-dormex}
     ports:
       - "3000:3000"
 

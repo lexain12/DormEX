@@ -22,7 +22,7 @@ class EmailService:
         self.smtp_use_tls = _parse_bool(os.getenv("SMTP_USE_TLS"), default=False)
         self.smtp_use_ssl = _parse_bool(os.getenv("SMTP_USE_SSL"), default=False)
         self.from_email = os.getenv("SMTP_FROM_EMAIL", "no-reply@campus.test")
-        self.from_name = os.getenv("SMTP_FROM_NAME", "DormHub")
+        self.from_name = os.getenv("SMTP_FROM_NAME", "dormex")
 
     def send_verification_code(
         self,
@@ -32,14 +32,14 @@ class EmailService:
         expires_in_sec: int,
     ) -> None:
         message = EmailMessage()
-        message["Subject"] = "Код входа в DormHub"
+        message["Subject"] = "Код входа в dormex"
         message["From"] = formataddr((self.from_name, self.from_email))
         message["To"] = recipient_email
 
         expires_minutes = max(1, expires_in_sec // 60)
         plain_text = (
             "Здравствуйте!\n\n"
-            f"Ваш код для входа в DormHub: {verification_code}\n"
+            f"Ваш код для входа в dormex: {verification_code}\n"
             f"Код действует около {expires_minutes} мин.\n\n"
             "Если вы не запрашивали вход, просто проигнорируйте это письмо."
         )
@@ -47,7 +47,7 @@ class EmailService:
         <html>
           <body style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
             <p>Здравствуйте!</p>
-            <p>Ваш код для входа в <strong>DormHub</strong>:</p>
+            <p>Ваш код для входа в <strong>dormex</strong>:</p>
             <p style="font-size: 24px; font-weight: 700; letter-spacing: 4px;">{verification_code}</p>
             <p>Код действует около {expires_minutes} мин.</p>
             <p style="color: #6b7280;">Если вы не запрашивали вход, просто проигнорируйте это письмо.</p>
