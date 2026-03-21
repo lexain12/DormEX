@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3, Clock, DollarSign, Star, TrendingUp } from "lucide-react";
@@ -64,10 +64,13 @@ const Analytics = () => {
     : categoryQueries.filter((_, index) => categoryIds[index] === category);
 
   const isLoading = relevantQueries.some((query) => query.isLoading);
-  const hasError = relevantQueries.some((query) => query.isError);
+  const failedQueriesCount = relevantQueries.filter((query) => query.isError).length;
   const successfulPayloads = relevantQueries
     .map((query) => query.data)
     .filter((item): item is CategoryAnalyticsDto => Boolean(item));
+  const hasAnySuccess = successfulPayloads.length > 0;
+  const hasOnlyErrors = failedQueriesCount > 0 && !hasAnySuccess;
+  const hasPartialErrors = failedQueriesCount > 0 && hasAnySuccess;
 
   const analytics = useMemo(() => {
     if (category === "all") {
@@ -76,6 +79,16 @@ const Analytics = () => {
 
     return successfulPayloads[0] ?? null;
   }, [category, successfulPayloads]);
+
+  useEffect(() => {
+    setSelectedRange(null);
+  }, [category]);
+
+  const retryRelevantQueries = () => {
+    relevantQueries.forEach((query) => {
+      void query.refetch();
+    });
+  };
 
   const histogram = analytics?.price_histogram ?? [];
   const selectedHistogram = histogram.find((item) => item.range === selectedRange) ?? null;
@@ -113,22 +126,45 @@ const Analytics = () => {
               </>
             )}
 
-            {!isLoading && hasError && (
+            {!isLoading && hasOnlyErrors && (
               <div className="card-surface p-5">
                 <h3 className="font-semibold text-sm text-foreground">Не удалось загрузить аналитику</h3>
                 <p className="text-sm text-muted-foreground mt-1">Проверьте доступность endpoint аналитики категорий.</p>
+                <button
+                  type="button"
+                  onClick={retryRelevantQueries}
+                  className="mt-3 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                >
+                  Повторить
+                </button>
               </div>
             )}
 
-            {!isLoading && !hasError && !analytics && (
+            {!isLoading && !hasOnlyErrors && !analytics && (
               <div className="card-surface p-5">
                 <h3 className="font-semibold text-sm text-foreground">Пока нет данных</h3>
                 <p className="text-sm text-muted-foreground mt-1">Для выбранной категории аналитика ещё не рассчитана.</p>
               </div>
             )}
 
-            {!isLoading && !hasError && analytics && (
+            {!isLoading && !hasOnlyErrors && analytics && (
               <>
+                {hasPartialErrors && (
+                  <div className="card-surface p-4">
+                    <div className="text-sm text-foreground">Часть категорий временно недоступна.</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Показаны данные по доступным endpoint.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={retryRelevantQueries}
+                      className="mt-2 text-xs text-primary hover:text-primary/80"
+                    >
+                      Повторить загрузку
+                    </button>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-4 gap-4">
                   {[
                     { icon: DollarSign, label: "Средняя цена", value: `${analytics.avg_price_amount} ₽`, change: "по категории", color: "text-primary" },
@@ -149,52 +185,62 @@ const Analytics = () => {
 
                 <div className="card-surface p-6">
                   <h3 className="font-semibold text-sm text-foreground mb-4">Распределение цен по завершённым сделкам</h3>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={histogram}>
-                        <XAxis dataKey="range" tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            background: "hsl(0, 0%, 100%)",
-                            border: "1px solid hsl(220, 13%, 91%)",
-                            borderRadius: "8px",
-                            fontSize: "13px",
-                          }}
-                          formatter={(value: number) => [`${value} сделок`, "Количество"]}
-                        />
-                        <ReferenceLine y={Math.round((Math.max(...histogram.map((entry) => entry.count), 0)) / 2)} stroke="hsl(217, 91%, 60%)" strokeDasharray="4 4" />
-                        <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[6, 6, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {histogram.length === 0 ? (
+                    <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
+                      Нет данных о диапазонах цен.
+                    </div>
+                  ) : (
+                    <div className="h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={histogram}>
+                          <XAxis dataKey="range" tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
+                          <Tooltip
+                            contentStyle={{
+                              background: "hsl(0, 0%, 100%)",
+                              border: "1px solid hsl(220, 13%, 91%)",
+                              borderRadius: "8px",
+                              fontSize: "13px",
+                            }}
+                            formatter={(value: number) => [`${value} сделок`, "Количество"]}
+                          />
+                          <ReferenceLine y={Math.round((Math.max(...histogram.map((entry) => entry.count), 0)) / 2)} stroke="hsl(217, 91%, 60%)" strokeDasharray="4 4" />
+                          <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                 </div>
 
                 <div className="card-surface">
                   <div className="p-4 border-b border-border">
                     <h3 className="font-semibold text-sm text-foreground">Диапазоны цен</h3>
                   </div>
-                  {histogram.map((item, i) => (
-                    <div
-                      key={item.range}
-                      onClick={() => setSelectedRange(item.range === selectedRange ? null : item.range)}
-                      className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
-                        selectedRange === item.range ? "bg-primary/5" : "hover:bg-accent"
-                      } ${i > 0 ? "border-t border-border" : ""}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-base">📊</span>
-                        <div>
-                          <div className="text-sm font-medium text-foreground">Диапазон {item.range} ₽</div>
-                          <div className="text-xs text-muted-foreground">Сделки в этом диапазоне</div>
+                  {histogram.length === 0 ? (
+                    <div className="p-4 text-sm text-muted-foreground">Диапазоны пока недоступны.</div>
+                  ) : (
+                    histogram.map((item, i) => (
+                      <div
+                        key={item.range}
+                        onClick={() => setSelectedRange(item.range === selectedRange ? null : item.range)}
+                        className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
+                          selectedRange === item.range ? "bg-primary/5" : "hover:bg-accent"
+                        } ${i > 0 ? "border-t border-border" : ""}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-base">📊</span>
+                          <div>
+                            <div className="text-sm font-medium text-foreground">Диапазон {item.range} ₽</div>
+                            <div className="text-xs text-muted-foreground">Сделки в этом диапазоне</div>
+                          </div>
+                        </div>
+                        <div className="text-right flex items-center gap-4">
+                          <div className="text-sm font-semibold text-foreground w-16 text-right">{item.count}</div>
+                          <span className="chip text-[10px] px-2 py-0.5 status-done">сделок</span>
                         </div>
                       </div>
-                      <div className="text-right flex items-center gap-4">
-                        <div className="text-sm font-semibold text-foreground w-16 text-right">{item.count}</div>
-                        <span className="chip text-[10px] px-2 py-0.5 status-done">сделок</span>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </>
             )}
