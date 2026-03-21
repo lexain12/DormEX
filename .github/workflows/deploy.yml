@@ -1,0 +1,59 @@
+name: Deploy to server
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy on server
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" bash << 'ENDSSH'
+            set -e
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+            TMP_DIR="${DEPLOY_PATH}.tmp"
+
+            echo "=== Removing old temp directory if exists ==="
+            rm -rf "$TMP_DIR"
+
+            echo "=== Cloning repository into temp directory ==="
+            git clone --depth=1 --branch dodo-server \
+              "$(git -C "$DEPLOY_PATH" remote get-url origin)" \
+              "$TMP_DIR"
+
+            echo "=== Stopping and removing Docker Compose containers and images ==="
+            cd "$DEPLOY_PATH"
+            if command -v docker-compose &> /dev/null; then
+              docker-compose down --rmi local || true
+            else
+              docker compose down --rmi local || true
+            fi
+
+            echo "=== Replacing deploy directory with fresh clone ==="
+            rm -rf "$DEPLOY_PATH"
+            mv "$TMP_DIR" "$DEPLOY_PATH"
+
+            echo "=== Running deployment script ==="
+            cd "$DEPLOY_PATH"
+            chmod +x deploy.sh
+            ./deploy.sh
+
+            echo "=== Deployment completed successfully! ==="
+          ENDSSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
