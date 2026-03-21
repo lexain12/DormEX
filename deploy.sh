@@ -18,6 +18,19 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
     exit 1
 fi
 
+# Stop and remove existing containers
+echo "Stopping and removing existing containers..."
+if command -v docker-compose &> /dev/null; then
+    docker-compose down || true
+else
+    docker compose down || true
+fi
+
+# Remove old images
+echo "Removing old Docker images..."
+docker rmi campus-exchange-hub-01-backend:latest || true
+docker rmi campus-exchange-hub-01-frontend:latest || true
+
 # Build the backend Docker image
 echo "Building backend Docker image..."
 docker build -t campus-exchange-hub-01-backend:latest ./backend
@@ -26,13 +39,12 @@ docker build -t campus-exchange-hub-01-backend:latest ./backend
 echo "Building frontend Docker image..."
 docker build -t campus-exchange-hub-01-frontend:latest ./frontend
 
-
 # Start services with docker-compose
 echo "Starting services..."
 if command -v docker-compose &> /dev/null; then
-    docker-compose up -d --build
+    docker-compose up -d
 else
-    docker compose up -d --build
+    docker compose up -d
 fi
 
 echo "Deployment completed successfully!"
