@@ -23,7 +23,7 @@ import {
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType } from "@/api/types";
 
-type ActionModal = "service" | "price" | "message" | "counter" | "cancel-task" | "dispute-task" | null;
+type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | null;
 
 const OFFER_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидает",
@@ -57,6 +57,11 @@ const TaskDetail = () => {
   const [counterPaymentType, setCounterPaymentType] = useState<ApiPaymentType>("fixed_price");
   const [counterPriceValue, setCounterPriceValue] = useState("");
   const [counterBarterDescription, setCounterBarterDescription] = useState("");
+  const [editingOfferId, setEditingOfferId] = useState<number | null>(null);
+  const [editOfferMessage, setEditOfferMessage] = useState("");
+  const [editOfferPaymentType, setEditOfferPaymentType] = useState<ApiPaymentType>("negotiable");
+  const [editOfferPriceValue, setEditOfferPriceValue] = useState("");
+  const [editOfferBarterDescription, setEditOfferBarterDescription] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [disputeComment, setDisputeComment] = useState("");
 
@@ -64,6 +69,7 @@ const TaskDetail = () => {
   const [priceError, setPriceError] = useState<string | null>(null);
   const [messageError, setMessageError] = useState<string | null>(null);
   const [counterError, setCounterError] = useState<string | null>(null);
+  const [editOfferError, setEditOfferError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [disputeError, setDisputeError] = useState<string | null>(null);
 
@@ -128,6 +134,37 @@ const TaskDetail = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       ]);
+    },
+  });
+
+  const updateOfferMutation = useMutation({
+    mutationFn: (payload: {
+      offerId: number;
+      message: string;
+      payment_type: ApiPaymentType;
+      price_amount: number | null;
+      barter_description: string | null;
+    }) => offersService.update(payload.offerId, {
+      message: payload.message,
+      payment_type: payload.payment_type,
+      price_amount: payload.price_amount,
+      barter_description: payload.barter_description,
+    }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.offers(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
+      ]);
+      toast({
+        title: "Отклик обновлён",
+        description: "Новые условия отправлены заказчику.",
+      });
+      setEditingOfferId(null);
+      setEditOfferError(null);
+      setActionModal(null);
+    },
+    onError: (error) => {
+      setEditOfferError(error instanceof Error ? error.message : "Не удалось обновить отклик");
     },
   });
 
@@ -360,6 +397,7 @@ const TaskDetail = () => {
     setPriceError(null);
     setMessageError(null);
     setCounterError(null);
+    setEditOfferError(null);
     setCancelError(null);
     setDisputeError(null);
   };
@@ -491,6 +529,44 @@ const TaskDetail = () => {
       payment_type: counterPaymentType,
       price_amount: counterPaymentType === "fixed_price" ? normalizedCounterPrice : null,
       barter_description: counterPaymentType === "barter" ? normalizedCounterBarter : null,
+    });
+  };
+
+  const handleEditOfferSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!editingOfferId) {
+      setEditOfferError("Отклик не выбран.");
+      return;
+    }
+
+    const normalizedMessage = editOfferMessage.trim();
+    const normalizedPrice = Number(editOfferPriceValue);
+    const normalizedBarter = editOfferBarterDescription.trim();
+
+    if (!normalizedMessage) {
+      setEditOfferError("Сообщение отклика не может быть пустым.");
+      return;
+    }
+
+    if (editOfferPaymentType === "fixed_price" && (!editOfferPriceValue || Number.isNaN(normalizedPrice) || normalizedPrice <= 0)) {
+      setEditOfferError("Для фиксированной цены укажите корректную сумму.");
+      return;
+    }
+
+    if (editOfferPaymentType === "barter" && !normalizedBarter) {
+      setEditOfferError("Для barter добавьте описание обмена.");
+      return;
+    }
+
+    setEditOfferError(null);
+
+    await updateOfferMutation.mutateAsync({
+      offerId: editingOfferId,
+      message: normalizedMessage,
+      payment_type: editOfferPaymentType,
+      price_amount: editOfferPaymentType === "fixed_price" ? normalizedPrice : null,
+      barter_description: editOfferPaymentType === "barter" ? normalizedBarter : null,
     });
   };
 
@@ -846,14 +922,31 @@ const TaskDetail = () => {
                                 : "Договорная"}
                           </div>
                           {isOwnPendingOffer && (
-                            <button
-                              type="button"
-                              onClick={() => withdrawOfferMutation.mutate(offer.id)}
-                              className="text-[11px] text-primary mt-2 hover:text-primary/80"
-                              disabled={withdrawOfferMutation.isPending}
-                            >
-                              Отозвать отклик
-                            </button>
+                            <div className="mt-2 flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingOfferId(offer.id);
+                                  setEditOfferMessage(offer.message ?? "");
+                                  setEditOfferPaymentType(offer.payment_type);
+                                  setEditOfferPriceValue(offer.price_amount ? String(offer.price_amount) : "");
+                                  setEditOfferBarterDescription(offer.barter_description ?? "");
+                                  setEditOfferError(null);
+                                  setActionModal("edit-offer");
+                                }}
+                                className="text-[11px] text-primary hover:text-primary/80"
+                              >
+                                Редактировать
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => withdrawOfferMutation.mutate(offer.id)}
+                                className="text-[11px] text-primary hover:text-primary/80"
+                                disabled={withdrawOfferMutation.isPending}
+                              >
+                                Отозвать отклик
+                              </button>
+                            </div>
                           )}
 
                           {canCounterOffer && (
@@ -1022,6 +1115,19 @@ const TaskDetail = () => {
                 <div className="text-xs text-muted-foreground">История переговоров пока пуста.</div>
               )}
 
+              {!counterOffersQuery.isLoading && counterOffersQuery.isError && (
+                <div className="text-xs text-destructive">
+                  Не удалось загрузить историю переговоров.
+                  <button
+                    type="button"
+                    onClick={() => void counterOffersQuery.refetch()}
+                    className="ml-2 text-primary hover:text-primary/80"
+                  >
+                    Повторить
+                  </button>
+                </div>
+              )}
+
               {!counterOffersQuery.isLoading && !counterOffersQuery.isError && (counterOffersQuery.data ?? []).map((counter) => {
                 const isOwn = counter.author_user_id === user?.id;
                 const isPendingForAction = counter.status === "pending" && !isOwn;
@@ -1152,6 +1258,97 @@ const TaskDetail = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={actionModal === "edit-offer"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать отклик</DialogTitle>
+            <DialogDescription>Обновите сообщение и условия вашего отклика.</DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-3" onSubmit={handleEditOfferSubmit}>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Сообщение</label>
+              <textarea
+                rows={4}
+                value={editOfferMessage}
+                onChange={(event) => {
+                  setEditOfferMessage(event.target.value);
+                  if (editOfferError) setEditOfferError(null);
+                }}
+                className="w-full px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Опишите условия выполнения"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Тип оплаты</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditOfferPaymentType("fixed_price")}
+                  className={`chip flex-1 justify-center text-xs ${editOfferPaymentType === "fixed_price" ? "chip-active" : "chip-inactive"}`}
+                >
+                  Цена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditOfferPaymentType("negotiable")}
+                  className={`chip flex-1 justify-center text-xs ${editOfferPaymentType === "negotiable" ? "chip-active" : "chip-inactive"}`}
+                >
+                  Договорная
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditOfferPaymentType("barter")}
+                  className={`chip flex-1 justify-center text-xs ${editOfferPaymentType === "barter" ? "chip-active" : "chip-inactive"}`}
+                >
+                  Бартер
+                </button>
+              </div>
+            </div>
+
+            {editOfferPaymentType === "fixed_price" && (
+              <div className="relative">
+                <input
+                  type="number"
+                  min={1}
+                  value={editOfferPriceValue}
+                  onChange={(event) => {
+                    setEditOfferPriceValue(event.target.value);
+                    if (editOfferError) setEditOfferError(null);
+                  }}
+                  className="w-full h-10 px-3 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="0"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽</span>
+              </div>
+            )}
+
+            {editOfferPaymentType === "barter" && (
+              <textarea
+                rows={3}
+                value={editOfferBarterDescription}
+                onChange={(event) => {
+                  setEditOfferBarterDescription(event.target.value);
+                  if (editOfferError) setEditOfferError(null);
+                }}
+                className="w-full px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Опишите barter-обмен"
+              />
+            )}
+
+            {editOfferError && <p className="text-xs text-destructive">{editOfferError}</p>}
+            <button
+              type="submit"
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              disabled={updateOfferMutation.isPending}
+            >
+              {updateOfferMutation.isPending ? "Сохраняем..." : "Сохранить изменения"}
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={actionModal === "message"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
         <DialogContent>
           <DialogHeader>
@@ -1190,6 +1387,13 @@ const TaskDetail = () => {
                 {messagesQuery.isError && (
                   <div className="text-xs text-destructive">
                     Не удалось загрузить сообщения.
+                    <button
+                      type="button"
+                      onClick={() => void messagesQuery.refetch()}
+                      className="ml-2 text-primary hover:text-primary/80"
+                    >
+                      Повторить
+                    </button>
                   </div>
                 )}
               </div>

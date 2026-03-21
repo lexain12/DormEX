@@ -50,6 +50,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
       offset: 0,
     }),
     enabled: isAuthenticated && notificationsOpen,
+    refetchInterval: notificationsOpen ? 30_000 : false,
   });
 
   const markReadMutation = useMutation({
@@ -59,6 +60,13 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotificationsCount }),
       ]);
+    },
+    onError: (error) => {
+      toast({
+        title: "Не удалось отметить уведомление",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
+        variant: "destructive",
+      });
     },
   });
 
