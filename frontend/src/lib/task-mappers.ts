@@ -114,6 +114,7 @@ export function mapTaskDtoToUi(task: TaskListItemDto | TaskDetailDto): Task {
     offersCount: task.offers_count ?? 0,
     requesterName,
     requesterRating: Number(task.customer?.rating_avg ?? 0),
+    requesterCompletedTasksCount: Number(task.customer?.completed_tasks_count ?? 0),
     requesterAvatar: getInitials(requesterName),
     createdAt: getRelativeTime(task.created_at),
   };

@@ -177,17 +177,44 @@ const Profile = () => {
     }));
   }, [reviewsQuery.data]);
 
-  const badges = profileQuery.data?.badges?.length ? profileQuery.data.badges : [
-    "verified_student",
-    "30+ completed_tasks",
-    "high_rating",
-    "fast_responder",
-  ];
-
   const dealsCount = Number(profileQuery.data?.completed_tasks_count ?? historyItems.filter((item) => item.status === "done").length);
   const activeCount = activeTasks.length;
   const createdCount = Number(profileQuery.data?.created_tasks_count ?? 0);
   const reviewsCount = Number(profileQuery.data?.reviews_count ?? reviews.length);
+  const badges = useMemo(() => {
+    if (profileQuery.data?.badges?.length) {
+      return profileQuery.data.badges;
+    }
+
+    const derivedBadges: string[] = [];
+
+    if (profileQuery.data?.dormitory?.id || user?.dormitory?.id) {
+      derivedBadges.push("verified_student");
+    }
+
+    if (dealsCount >= 30) {
+      derivedBadges.push("completed_tasks");
+    }
+
+    if (displayRating >= 4.5 && reviewsCount > 0) {
+      derivedBadges.push("high_rating");
+    }
+
+    if (activeCount > 0 || createdCount > 0) {
+      derivedBadges.push("active_user");
+    }
+
+    return derivedBadges;
+  }, [
+    activeCount,
+    createdCount,
+    dealsCount,
+    displayRating,
+    profileQuery.data?.badges,
+    profileQuery.data?.dormitory?.id,
+    reviewsCount,
+    user?.dormitory?.id,
+  ]);
 
   useEffect(() => {
     if (!selectedHistoryTxId) {
@@ -237,29 +264,35 @@ const Profile = () => {
 
             <div className="card-surface p-4">
               <h3 className="font-semibold text-sm text-foreground mb-3">Знаки доверия</h3>
-              <div className="space-y-2.5">
-                {badges.map((badge) => {
-                  const normalized = badge.toLowerCase();
-                  const isVerified = normalized.includes("verified");
-                  const isCompleted = normalized.includes("completed") || normalized.includes("30+");
-                  const isRating = normalized.includes("rating");
-                  const icon = isVerified ? Shield : isCompleted ? CheckCircle : isRating ? Star : Clock;
-                  const label = isVerified
-                    ? "Верифицированный студент"
-                    : isCompleted
-                      ? "Завершённые сделки"
-                      : isRating
-                        ? "Высокий рейтинг"
-                        : "Активный пользователь";
+              {badges.length === 0 ? (
+                <div className="p-3 rounded-lg bg-secondary text-xs text-muted-foreground">
+                  Знаки доверия появятся автоматически по мере заполнения профиля и завершения сделок.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {badges.map((badge) => {
+                    const normalized = badge.toLowerCase();
+                    const isVerified = normalized.includes("verified");
+                    const isCompleted = normalized.includes("completed") || normalized.includes("30+");
+                    const isRating = normalized.includes("rating");
+                    const icon = isVerified ? Shield : isCompleted ? CheckCircle : isRating ? Star : Clock;
+                    const label = isVerified
+                      ? "Верифицированный студент"
+                      : isCompleted
+                        ? "Завершённые сделки"
+                        : isRating
+                          ? "Высокий рейтинг"
+                          : "Активный пользователь";
 
-                  return (
-                    <div key={badge} className="flex items-center gap-2.5 p-2 rounded-lg bg-secondary">
-                      <icon className="w-4 h-4 text-primary" />
-                      <span className="text-xs text-foreground">{label}</span>
-                    </div>
-                  );
-                })}
-              </div>
+                    return (
+                      <div key={badge} className="flex items-center gap-2.5 p-2 rounded-lg bg-secondary">
+                        <icon className="w-4 h-4 text-primary" />
+                        <span className="text-xs text-foreground">{label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 

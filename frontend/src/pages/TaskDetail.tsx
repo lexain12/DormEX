@@ -5,6 +5,7 @@ import { ArrowLeft, Clock, MessageSquare, Send, Star } from "lucide-react";
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { queryKeys } from "@/api/query-keys";
+import { analyticsService } from "@/api/services/analytics";
 import { chatsService } from "@/api/services/chats";
 import { offersService } from "@/api/services/offers";
 import { tasksService } from "@/api/services/tasks";
@@ -15,8 +16,6 @@ import { useAuth } from "@/context/auth-context";
 import { toast } from "@/hooks/use-toast";
 import {
   PAYMENT_LABELS,
-  PRICE_HISTOGRAM,
-  SAMPLE_TRANSACTIONS,
   STATUS_LABELS,
   URGENCY_LABELS,
 } from "@/lib/data";
@@ -44,7 +43,6 @@ const TaskDetail = () => {
   const { user } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
   const [actionModal, setActionModal] = useState<ActionModal>(null);
-  const [selectedTransactionId, setSelectedTransactionId] = useState<string | null>(null);
   const [selectedOfferForCounter, setSelectedOfferForCounter] = useState<number | null>(null);
 
   const [serviceTitle, setServiceTitle] = useState("");
@@ -100,7 +98,19 @@ const TaskDetail = () => {
     enabled: actionModal === "counter" && Boolean(selectedOfferForCounter),
   });
 
+  const analyticsCategory = taskQuery.data?.category ?? null;
+  const analyticsQuery = useQuery({
+    queryKey: queryKeys.analyticsCategory(analyticsCategory ?? ""),
+    queryFn: () => analyticsService.getCategory(analyticsCategory as string),
+    enabled: taskQuery.isSuccess && Boolean(analyticsCategory) && !taskQuery.data?.analytics,
+  });
+
   const task = taskQuery.data ? mapTaskDtoToUi(taskQuery.data) : null;
+  const categoryAnalytics = taskQuery.data?.analytics ?? analyticsQuery.data ?? null;
+  const analyticsHistogram = categoryAnalytics?.price_histogram ?? [];
+  const analyticsMaxCount = Math.max(...analyticsHistogram.map((entry) => entry.count), 0);
+  const isAnalyticsLoading = Boolean(analyticsCategory) && !taskQuery.data?.analytics && analyticsQuery.isLoading;
+  const hasAnalyticsError = !categoryAnalytics && analyticsQuery.isError;
 
   const chatIdFromTask = typeof taskQuery.data?.chat_id === "number" ? taskQuery.data.chat_id : null;
   const chatIdFromList = chatsQuery.data?.find((chat) => chat.task_id === numericTaskId)?.id ?? null;
@@ -607,11 +617,6 @@ const TaskDetail = () => {
         task.status === "progress" ? "status-progress" :
           task.status === "done" ? "status-done" : "status-cancelled";
 
-  const categoryTransactions = useMemo(
-    () => SAMPLE_TRANSACTIONS.filter((entry) => entry.category === task?.category),
-    [task?.category],
-  );
-  const selectedTransaction = categoryTransactions.find((entry) => entry.id === selectedTransactionId);
   const canRespond = taskQuery.data?.can_respond ?? (task?.status === "open" || task?.status === "offers");
   const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
   const canChoosePerformer = taskQuery.data?.can_choose_performer ?? (isTaskOwner && task?.status === "offers");
@@ -714,79 +719,83 @@ const TaskDetail = () => {
               <div className="card-surface p-6">
                 <h3 className="font-semibold text-sm text-foreground mb-4">Аналитика категории: {task.categoryIcon} История сделок</h3>
 
-                <div className="h-48 mb-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={PRICE_HISTOGRAM}>
-                      <XAxis dataKey="range" tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(0, 0%, 100%)",
-                          border: "1px solid hsl(220, 13%, 91%)",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <ReferenceLine y={22} stroke="hsl(217, 91%, 60%)" strokeDasharray="4 4" label={{ value: "Медиана", position: "right", fontSize: 11, fill: "hsl(217, 91%, 60%)" }} />
-                      <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div className="grid grid-cols-4 gap-3">
-                  {[
-                    { label: "Медианная цена", value: "380 ₽" },
-                    { label: "Средняя цена", value: "420 ₽" },
-                    { label: "Диапазон", value: "150–1200 ₽" },
-                    { label: "Среднее время", value: "2.5 часа" },
-                  ].map((s) => (
-                    <div key={s.label} className="p-3 rounded-lg bg-secondary">
-                      <div className="text-base font-semibold text-foreground">{s.value}</div>
-                      <div className="text-[11px] text-muted-foreground">{s.label}</div>
+                {isAnalyticsLoading ? (
+                  <div className="space-y-4">
+                    <div className="h-48 rounded-lg bg-secondary animate-pulse" />
+                    <div className="grid grid-cols-4 gap-3">
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="h-20 rounded-lg bg-secondary animate-pulse" />
+                      ))}
                     </div>
-                  ))}
-                </div>
-
-                {categoryTransactions.length > 0 && (
-                  <div className="mt-5 pt-5 border-t border-border">
-                    <h4 className="text-sm font-medium text-foreground mb-3">Последние сделки</h4>
-                    <div className="space-y-2">
-                      {categoryTransactions.slice(0, 5).map((tx) => {
-                        const isSelected = tx.id === selectedTransactionId;
-
-                        return (
-                          <button
-                            key={tx.id}
-                            type="button"
-                            onClick={() => setSelectedTransactionId(isSelected ? null : tx.id)}
-                            className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors text-left ${
-                              isSelected ? "bg-primary/10" : "hover:bg-accent"
-                            }`}
-                          >
-                            <div>
-                              <div className="text-sm text-foreground">{tx.title}</div>
-                              <div className="text-xs text-muted-foreground">{tx.performer} · {tx.date}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm font-semibold text-foreground">{tx.price} ₽</div>
-                              <div className="flex items-center gap-0.5 justify-end">
-                                <Star className="w-3 h-3 text-warning fill-warning" />
-                                <span className="text-xs text-foreground">{tx.rating}</span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {selectedTransaction && (
-                      <div className="mt-3 p-3 rounded-lg border border-border bg-secondary/50">
-                        <div className="text-sm font-medium text-foreground">{selectedTransaction.title}</div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Исполнитель: {selectedTransaction.performer} · Статус: {selectedTransaction.status === "done" ? "завершена" : "отменена"}
-                        </div>
+                  </div>
+                ) : hasAnalyticsError ? (
+                  <div className="p-4 rounded-lg border border-border bg-secondary/40">
+                    <div className="text-sm text-foreground">Не удалось загрузить аналитику категории.</div>
+                    <button
+                      type="button"
+                      onClick={() => void analyticsQuery.refetch()}
+                      className="mt-2 text-xs text-primary hover:text-primary/80"
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : categoryAnalytics ? (
+                  <>
+                    {analyticsHistogram.length > 0 ? (
+                      <div className="h-48 mb-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={analyticsHistogram}>
+                            <XAxis dataKey="range" tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
+                            <Tooltip
+                              contentStyle={{
+                                background: "hsl(0, 0%, 100%)",
+                                border: "1px solid hsl(220, 13%, 91%)",
+                                borderRadius: "8px",
+                                fontSize: "12px",
+                              }}
+                              formatter={(value: number) => [`${value} сделок`, "Количество"]}
+                            />
+                            <ReferenceLine
+                              y={Math.round(analyticsMaxCount / 2)}
+                              stroke="hsl(217, 91%, 60%)"
+                              strokeDasharray="4 4"
+                              label={{ value: "Ориентир", position: "right", fontSize: 11, fill: "hsl(217, 91%, 60%)" }}
+                            />
+                            <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="h-48 mb-4 rounded-lg border border-border bg-secondary/40 flex items-center justify-center text-sm text-muted-foreground">
+                        По этой категории пока нет гистограммы завершённых сделок.
                       </div>
                     )}
+
+                    <div className="grid grid-cols-4 gap-3">
+                      {[
+                        { label: "Медианная цена", value: `${categoryAnalytics.median_price_amount} ₽` },
+                        { label: "Средняя цена", value: `${categoryAnalytics.avg_price_amount} ₽` },
+                        { label: "Диапазон", value: `${categoryAnalytics.min_price_amount}–${categoryAnalytics.max_price_amount} ₽` },
+                        { label: "Среднее время", value: `${Math.round(categoryAnalytics.avg_completion_minutes / 60 * 10) / 10} часа` },
+                      ].map((s) => (
+                        <div key={s.label} className="p-3 rounded-lg bg-secondary">
+                          <div className="text-base font-semibold text-foreground">{s.value}</div>
+                          <div className="text-[11px] text-muted-foreground">{s.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-5 pt-5 border-t border-border">
+                      <h4 className="text-sm font-medium text-foreground mb-3">Последние сделки</h4>
+                      <div className="p-3 rounded-lg border border-border bg-secondary/50 text-sm text-muted-foreground">
+                        API пока возвращает только агрегированную аналитику по категории. Список отдельных последних сделок для этой карточки ещё недоступен.
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-4 rounded-lg border border-border bg-secondary/40 text-sm text-muted-foreground">
+                    Для этой категории аналитика пока не рассчитана.
                   </div>
                 )}
               </div>
