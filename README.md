@@ -14,8 +14,9 @@ docker compose up --build
 
 Сервисы будут доступны по адресам:
 
-- frontend: `http://localhost:5173`
-- backend: `http://localhost:3000`
+- app через nginx: `http://localhost/dormex/`
+- backend api через nginx: `http://localhost/api/v1`
+- backend напрямую: `http://localhost:3000`
 - postgres: `localhost:5433`
 
 ## Что внутри
@@ -23,7 +24,7 @@ docker compose up --build
 - PostgreSQL как основная база данных
 - Liquibase для миграций схемы
 - FastAPI backend, который работает через `DATABASE_URL`
-- Vite frontend в отдельном контейнере
+- Nginx раздаёт собранный frontend и проксирует API в backend
 
 ## Локальный вход и demo-данные
 

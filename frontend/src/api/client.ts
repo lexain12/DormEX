@@ -1,7 +1,7 @@
 import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from "@/auth/storage";
 import type { ApiErrorShape, AuthVerifyCodeResponse } from "@/api/types";
 
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api/v1").replace(/\/$/, "");
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 15000);
 
 export class ApiError extends Error {

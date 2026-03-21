@@ -51,17 +51,17 @@ services:
     ports:
       - "3000:3000"
 
-  frontend:
+  nginx:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: campus-exchange-hub-01-frontend:latest
+      context: .
+      dockerfile: nginx/Dockerfile
+    image: campus-exchange-hub-01-nginx:latest
     pull_policy: never
-    container_name: campus_exchange_frontend
+    container_name: campus_exchange_nginx
     depends_on:
       - backend
     ports:
-      - "5173:5173"
+      - "80:80"
 
 volumes:
   postgres_data:
