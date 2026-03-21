@@ -83,6 +83,8 @@ export interface TaskDetailDto extends TaskListItemDto {
   can_choose_performer?: boolean;
   analytics?: CategoryAnalyticsDto | null;
   chat_id?: number | null;
+  completion_confirmation_status?: string | null;
+  completion_confirmed_by_me?: boolean;
 }
 
 export interface CreateTaskPayload {

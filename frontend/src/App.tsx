@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound.tsx";
 import { InteractionStoreProvider } from "@/context/interaction-store";
 
 const queryClient = new QueryClient();
+const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -23,7 +24,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
+          <BrowserRouter basename={routerBasename}>
             <Routes>
               <Route
                 path="/auth"

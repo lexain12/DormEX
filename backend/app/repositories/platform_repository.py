@@ -615,6 +615,11 @@ class PlatformRepository:
                         d.id AS dormitory_id,
                         d.name AS dormitory_name,
                         chat.id AS chat_id,
+                        assignment.id AS assignment_id,
+                        assignment.performer_id AS assignment_performer_id,
+                        completion.status AS completion_status,
+                        completion.customer_confirmed_at,
+                        completion.performer_confirmed_at,
                         ao.id AS accepted_offer_id,
                         ao.performer_id AS accepted_offer_performer_id,
                         ao.message AS accepted_offer_message,
@@ -628,6 +633,8 @@ class PlatformRepository:
                     JOIN universities uni ON uni.id = t.university_id
                     JOIN dormitories d ON d.id = t.dormitory_id
                     LEFT JOIN task_chats chat ON chat.task_id = t.id
+                    LEFT JOIN task_assignments assignment ON assignment.task_id = t.id
+                    LEFT JOIN task_completion_confirmations completion ON completion.task_assignment_id = assignment.id
                     LEFT JOIN task_offers ao ON ao.id = t.accepted_offer_id
                     LEFT JOIN users performer ON performer.id = ao.performer_id
                     WHERE t.id = %s
@@ -668,6 +675,11 @@ class PlatformRepository:
             row["customer_id"] != current_user_id
             and row["status"] in ("open", "offers")
             and (own_offer is None or own_offer["status"] in ("rejected", "withdrawn"))
+        )
+        task["completion_confirmation_status"] = row["completion_status"]
+        task["completion_confirmed_by_me"] = bool(
+            (row["customer_id"] == current_user_id and row["customer_confirmed_at"] is not None)
+            or (row["assignment_performer_id"] == current_user_id and row["performer_confirmed_at"] is not None)
         )
         task["accepted_offer"] = None
 

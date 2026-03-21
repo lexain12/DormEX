@@ -365,14 +365,22 @@ const TaskDetail = () => {
 
   const confirmCompletionMutation = useMutation({
     mutationFn: () => tasksService.confirmCompletion(numericTaskId),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       ]);
+      if (response?.status === "completed") {
+        toast({
+          title: "Задача подтверждена как выполненная",
+          description: "Статус задачи обновлён на завершённую.",
+        });
+        return;
+      }
+
       toast({
-        title: "Задача подтверждена как выполненная",
-        description: "Статус задачи обновлён на завершённую.",
+        title: "Ваше подтверждение сохранено",
+        description: "Теперь ждём подтверждение второй стороны.",
       });
     },
     onError: (error) => {
@@ -619,8 +627,12 @@ const TaskDetail = () => {
 
   const canRespond = taskQuery.data?.can_respond ?? (task?.status === "open" || task?.status === "offers");
   const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
+  const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
   const canChoosePerformer = taskQuery.data?.can_choose_performer ?? (isTaskOwner && task?.status === "offers");
-  const canManageProgress = Boolean(isTaskOwner && task?.status === "progress");
+  const canManageProgress = Boolean((isTaskOwner || isAssignedPerformer) && task?.status === "progress");
+  const completionStatus = taskQuery.data?.completion_confirmation_status ?? null;
+  const completionConfirmedByMe = Boolean(taskQuery.data?.completion_confirmed_by_me);
+  const isAwaitingOtherPartyConfirmation = task?.status === "progress" && completionConfirmedByMe && completionStatus !== "completed";
 
   if (!hasValidTaskId) {
     return (
@@ -850,16 +862,24 @@ const TaskDetail = () => {
                     <button
                       onClick={() => completeRequestMutation.mutate()}
                       className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={completeRequestMutation.isPending}
+                      disabled={completeRequestMutation.isPending || isAwaitingOtherPartyConfirmation}
                     >
-                      {completeRequestMutation.isPending ? "Отправляем..." : "Запросить завершение"}
+                      {completeRequestMutation.isPending
+                        ? "Отправляем..."
+                        : isAwaitingOtherPartyConfirmation
+                          ? "Ожидаем вторую сторону"
+                          : "Запросить завершение"}
                     </button>
                     <button
                       onClick={() => confirmCompletionMutation.mutate()}
                       className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      disabled={confirmCompletionMutation.isPending}
+                      disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation}
                     >
-                      {confirmCompletionMutation.isPending ? "Подтверждаем..." : "Подтвердить выполнение"}
+                      {confirmCompletionMutation.isPending
+                        ? "Подтверждаем..."
+                        : isAwaitingOtherPartyConfirmation
+                          ? "Подтверждение отправлено"
+                          : "Подтвердить выполнение"}
                     </button>
                     <button
                       onClick={() => setActionModal("dispute-task")}
@@ -868,6 +888,12 @@ const TaskDetail = () => {
                       Открыть спор
                     </button>
                   </>
+                )}
+
+                {isAwaitingOtherPartyConfirmation && (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    Вы уже подтвердили выполнение. Задача закроется, когда подтвердит вторая сторона.
+                  </div>
                 )}
 
                 <div className="pt-3 border-t border-border">
