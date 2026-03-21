@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 
+from ..core.auth_tokens import decode_access_token, extract_bearer_token
 from ..core.exceptions import DomainValidationError
 from ..repositories.user_repository import UserRepository
 
@@ -21,13 +22,22 @@ class CurrentUserService:
         self.user_repository = user_repository or UserRepository()
         self.default_user_id = os.getenv("DEFAULT_USER_ID", "1")
 
-    def resolve_current_user(self, raw_user_id: str | None) -> CurrentUserContext:
-        user_id_value = raw_user_id or self.default_user_id
+    def resolve_current_user(
+        self,
+        raw_authorization: str | None,
+        raw_user_id: str | None,
+    ) -> CurrentUserContext:
+        bearer_token = extract_bearer_token(raw_authorization)
 
-        try:
-            user_id = int(user_id_value)
-        except (TypeError, ValueError) as error:
-            raise DomainValidationError("Invalid current user identifier") from error
+        if bearer_token:
+            user_id = decode_access_token(bearer_token)
+        else:
+            user_id_value = raw_user_id or self.default_user_id
+
+            try:
+                user_id = int(user_id_value)
+            except (TypeError, ValueError) as error:
+                raise DomainValidationError("Invalid current user identifier") from error
 
         user = self.user_repository.get_user_context(user_id)
         if user is None:

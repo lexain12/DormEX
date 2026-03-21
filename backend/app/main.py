@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .controllers.api_controller import router as api_router
 from .controllers.health_controller import router as health_router
-from .controllers.task_controller import router as task_router
+from .core.error_handlers import register_error_handlers
+from .services.bootstrap_service import BootstrapService
 
 
 app = FastAPI(
@@ -23,5 +25,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+register_error_handlers(app)
+
 app.include_router(health_router)
-app.include_router(task_router)
+app.include_router(api_router)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    BootstrapService().ensure_bootstrap_data()
