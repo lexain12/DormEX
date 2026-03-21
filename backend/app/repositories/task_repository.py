@@ -77,7 +77,7 @@ class TaskRepository:
             "offset": offset,
         }
 
-    def get_task(self, task_id: int) -> dict[str, Any] | None:
+    def get_task(self, task_id: int, *, university_id: int) -> dict[str, Any] | None:
         with get_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -116,7 +116,8 @@ class TaskRepository:
                         ao.payment_type AS accepted_offer_payment_type,
                         ao.barter_description AS accepted_offer_barter_description,
                         ao.status AS accepted_offer_status,
-                        performer.full_name AS accepted_offer_performer_full_name
+                        performer.full_name AS accepted_offer_performer_full_name,
+                        performer.rating_avg AS accepted_offer_performer_rating_avg
                     FROM tasks t
                     JOIN users u ON u.id = t.customer_id
                     JOIN universities uni ON uni.id = t.university_id
@@ -124,8 +125,9 @@ class TaskRepository:
                     LEFT JOIN task_offers ao ON ao.id = t.accepted_offer_id
                     LEFT JOIN users performer ON performer.id = ao.performer_id
                     WHERE t.id = %s
+                      AND t.university_id = %s
                     """,
-                    (task_id,),
+                    (task_id, university_id),
                 )
                 row = cursor.fetchone()
 
@@ -146,9 +148,32 @@ class TaskRepository:
                 "performer": {
                     "id": row["accepted_offer_performer_id"],
                     "full_name": row["accepted_offer_performer_full_name"],
+                    "rating_avg": row["accepted_offer_performer_rating_avg"],
                 },
             }
         return task
+
+    def get_task_context(self, task_id: int) -> dict[str, Any] | None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id,
+                        customer_id,
+                        university_id,
+                        dormitory_id,
+                        title,
+                        category,
+                        status,
+                        accepted_offer_id,
+                        offers_count
+                    FROM tasks
+                    WHERE id = %s
+                    """,
+                    (task_id,),
+                )
+                return cursor.fetchone()
 
     def create_task(self, payload: dict[str, Any]) -> dict[str, Any]:
         with get_connection() as connection:
@@ -213,13 +238,329 @@ class TaskRepository:
                     raise DomainValidationError(
                         "Customer and dormitory must exist and belong to the same university"
                     )
-
             connection.commit()
 
-        task = self.get_task(inserted["id"])
+        task = self.get_task(inserted["id"], university_id=payload["university_id"])
         if task is None:
             raise RuntimeError("Failed to load created task")
         return task
+
+    def update_task(self, *, task_id: int, payload: dict[str, Any], university_id: int) -> dict[str, Any] | None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tasks t
+                    SET
+                        dormitory_id = d.id,
+                        title = %s,
+                        description = %s,
+                        category = %s,
+                        urgency = %s,
+                        payment_type = %s,
+                        price_amount = %s,
+                        barter_description = %s,
+                        visibility = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    FROM dormitories d
+                    WHERE t.id = %s
+                      AND d.id = %s
+                      AND d.university_id = %s
+                    RETURNING t.id
+                    """,
+                    (
+                        payload["title"],
+                        payload["description"],
+                        payload["category"],
+                        payload["urgency"],
+                        payload["payment_type"],
+                        payload.get("price_amount"),
+                        payload.get("barter_description"),
+                        payload["visibility"],
+                        task_id,
+                        payload["dormitory_id"],
+                        university_id,
+                    ),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return self.get_task(task_id, university_id=university_id) if row is not None else None
+
+    def cancel_task(self, *, task_id: int, reason: str, university_id: int) -> dict[str, Any] | None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE tasks
+                    SET
+                        status = 'cancelled',
+                        cancelled_at = CURRENT_TIMESTAMP,
+                        cancellation_reason = %s,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                      AND university_id = %s
+                    RETURNING id
+                    """,
+                    (reason, task_id, university_id),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+        return self.get_task(task_id, university_id=university_id) if row is not None else None
+
+    def has_user_offer(self, *, task_id: int, performer_id: int) -> bool:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM task_offers
+                    WHERE task_id = %s
+                      AND performer_id = %s
+                    LIMIT 1
+                    """,
+                    (task_id, performer_id),
+                )
+                return cursor.fetchone() is not None
+
+    def get_category_analytics(self, *, university_id: int, category: str) -> dict[str, Any]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        COUNT(*) AS total_tasks,
+                        COUNT(*) FILTER (WHERE status IN ('open', 'offers')) AS open_tasks_count,
+                        COUNT(*) FILTER (WHERE status = 'completed') AS completed_tasks_count,
+                        ROUND(AVG(price_amount) FILTER (WHERE payment_type = 'fixed_price'), 2) AS avg_fixed_price
+                    FROM tasks
+                    WHERE university_id = %s
+                      AND category = %s
+                    """,
+                    (university_id, category),
+                )
+                row = cursor.fetchone()
+
+        if row is None:
+            return {
+                "total_tasks": 0,
+                "open_tasks_count": 0,
+                "completed_tasks_count": 0,
+                "avg_fixed_price": None,
+            }
+
+        return {
+            "total_tasks": row["total_tasks"],
+            "open_tasks_count": row["open_tasks_count"],
+            "completed_tasks_count": row["completed_tasks_count"],
+            "avg_fixed_price": float(row["avg_fixed_price"]) if row["avg_fixed_price"] is not None else None,
+        }
+
+    def get_assignment_by_task(self, task_id: int) -> dict[str, Any] | None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id,
+                        task_id,
+                        offer_id,
+                        customer_id,
+                        performer_id,
+                        agreed_price_amount,
+                        agreed_payment_type,
+                        agreed_barter_description,
+                        status,
+                        assigned_at,
+                        started_at,
+                        completed_at,
+                        cancelled_at,
+                        created_at,
+                        updated_at
+                    FROM task_assignments
+                    WHERE task_id = %s
+                    """,
+                    (task_id,),
+                )
+                return cursor.fetchone()
+
+    def get_completion_confirmation(self, *, task_assignment_id: int) -> dict[str, Any] | None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        id,
+                        task_assignment_id,
+                        customer_confirmed_at,
+                        performer_confirmed_at,
+                        status,
+                        dispute_opened_by_user_id,
+                        dispute_comment,
+                        created_at,
+                        updated_at
+                    FROM task_completion_confirmations
+                    WHERE task_assignment_id = %s
+                    """,
+                    (task_assignment_id,),
+                )
+                return cursor.fetchone()
+
+    def upsert_completion_request(
+        self,
+        *,
+        task_assignment_id: int,
+        confirmer_role: str,
+    ) -> dict[str, Any]:
+        existing = self.get_completion_confirmation(task_assignment_id=task_assignment_id)
+        column = "customer_confirmed_at" if confirmer_role == "customer" else "performer_confirmed_at"
+        status = "customer_confirmed" if confirmer_role == "customer" else "performer_confirmed"
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                if existing is None:
+                    cursor.execute(
+                        f"""
+                        INSERT INTO task_completion_confirmations (
+                            task_assignment_id,
+                            {column},
+                            status
+                        )
+                        VALUES (%s, CURRENT_TIMESTAMP, %s)
+                        RETURNING
+                            id,
+                            task_assignment_id,
+                            customer_confirmed_at,
+                            performer_confirmed_at,
+                            status,
+                            dispute_opened_by_user_id,
+                            dispute_comment,
+                            created_at,
+                            updated_at
+                        """,
+                        (task_assignment_id, status),
+                    )
+                else:
+                    cursor.execute(
+                        f"""
+                        UPDATE task_completion_confirmations
+                        SET
+                            {column} = CURRENT_TIMESTAMP,
+                            status = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE task_assignment_id = %s
+                        RETURNING
+                            id,
+                            task_assignment_id,
+                            customer_confirmed_at,
+                            performer_confirmed_at,
+                            status,
+                            dispute_opened_by_user_id,
+                            dispute_comment,
+                            created_at,
+                            updated_at
+                        """,
+                        (status, task_assignment_id),
+                    )
+                row = cursor.fetchone()
+            connection.commit()
+        return row
+
+    def mark_completion_completed(self, *, task_id: int, task_assignment_id: int) -> dict[str, Any]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE task_completion_confirmations
+                    SET
+                        status = 'completed',
+                        customer_confirmed_at = COALESCE(customer_confirmed_at, CURRENT_TIMESTAMP),
+                        performer_confirmed_at = COALESCE(performer_confirmed_at, CURRENT_TIMESTAMP),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE task_assignment_id = %s
+                    RETURNING status
+                    """,
+                    (task_assignment_id,),
+                )
+                confirmation = cursor.fetchone()
+
+                cursor.execute(
+                    """
+                    UPDATE task_assignments
+                    SET
+                        status = 'completed',
+                        completed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (task_assignment_id,),
+                )
+
+                cursor.execute(
+                    """
+                    UPDATE tasks
+                    SET
+                        status = 'completed',
+                        completed_at = CURRENT_TIMESTAMP,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (task_id,),
+                )
+            connection.commit()
+
+        return {
+            "task_id": task_id,
+            "confirmation_status": confirmation["status"] if confirmation is not None else "completed",
+        }
+
+    def open_dispute(
+        self,
+        *,
+        task_assignment_id: int,
+        dispute_opened_by_user_id: int,
+        comment: str,
+    ) -> None:
+        existing = self.get_completion_confirmation(task_assignment_id=task_assignment_id)
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                if existing is None:
+                    cursor.execute(
+                        """
+                        INSERT INTO task_completion_confirmations (
+                            task_assignment_id,
+                            status,
+                            dispute_opened_by_user_id,
+                            dispute_comment
+                        )
+                        VALUES (%s, 'disputed', %s, %s)
+                        """,
+                        (task_assignment_id, dispute_opened_by_user_id, comment),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE task_completion_confirmations
+                        SET
+                            status = 'disputed',
+                            dispute_opened_by_user_id = %s,
+                            dispute_comment = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE task_assignment_id = %s
+                        """,
+                        (dispute_opened_by_user_id, comment, task_assignment_id),
+                    )
+
+                cursor.execute(
+                    """
+                    UPDATE task_assignments
+                    SET status = 'disputed',
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                    """,
+                    (task_assignment_id,),
+                )
+            connection.commit()
 
     def _build_task_filters(self, filters: dict[str, Any]) -> tuple[str, list[Any]]:
         conditions: list[str] = []
@@ -281,9 +622,6 @@ class TaskRepository:
             "cancellation_reason": row["cancellation_reason"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "customer_id": row["customer_id"],
-            "university_id": row["university_id"],
-            "dormitory_id": row["dormitory_id"],
             "customer": {
                 "id": row["customer_id"],
                 "full_name": row["customer_full_name"],
