@@ -25,8 +25,8 @@ export function TaskCard({ task }: TaskCardProps) {
       className="card-surface p-4 hover:border-primary/30 transition-all group animate-fade-in block"
     >
       {/* Top row */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span className="text-base">{task.categoryIcon}</span>
           <span className="text-xs text-muted-foreground">{task.dorm}</span>
         </div>
@@ -53,7 +53,7 @@ export function TaskCard({ task }: TaskCardProps) {
       </div>
 
       {/* Price row */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold text-foreground">
           {task.price ? `${task.price} ₽` : 'Предложите цену'}
         </div>
@@ -65,8 +65,8 @@ export function TaskCard({ task }: TaskCardProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-3 border-t border-border">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary">
             {task.requesterAvatar}
           </div>

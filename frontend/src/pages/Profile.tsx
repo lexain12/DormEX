@@ -230,9 +230,9 @@ const Profile = () => {
     <div className="min-h-screen bg-background">
       <TopNav onCreateRequest={() => setCreateOpen(true)} />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
-        <div className="flex gap-6">
-          <div className="w-80 shrink-0 space-y-4">
+      <div className="max-w-[1400px] mx-auto px-4 py-4 sm:px-6 sm:py-6">
+        <div className="flex flex-col gap-6 xl:flex-row">
+          <div className="w-full shrink-0 space-y-4 xl:w-80">
             <div className="card-surface p-6 text-center">
               <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center text-2xl font-semibold text-primary mx-auto mb-4">
                 {avatar || "??"}
@@ -246,7 +246,7 @@ const Profile = () => {
                 <span className="text-sm text-muted-foreground">· {reviewsCount} отзывов</span>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 mt-5 pt-5 border-t border-border">
+              <div className="mt-5 grid grid-cols-3 gap-2 border-t border-border pt-5 sm:gap-3">
                 <div>
                   <div className="text-lg font-semibold text-foreground">{dealsCount}</div>
                   <div className="text-[11px] text-muted-foreground">Сделки</div>
@@ -297,24 +297,26 @@ const Profile = () => {
           </div>
 
           <div className="flex-1 min-w-0 space-y-5">
-            <div className="flex gap-1 border-b border-border">
-              {([
-                { id: "active", label: "Активные" },
-                { id: "history", label: "История сделок" },
-                { id: "reviews", label: "Отзывы" },
-              ] as const).map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                    tab === t.id
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+            <div className="overflow-x-auto border-b border-border">
+              <div className="flex min-w-max gap-1">
+                {([
+                  { id: "active", label: "Активные" },
+                  { id: "history", label: "История сделок" },
+                  { id: "reviews", label: "Отзывы" },
+                ] as const).map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      tab === t.id
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {!apiEnabled && (
@@ -414,21 +416,23 @@ const Profile = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedHistoryTxId(isSelected ? null : tx.id)}
-                        className={`w-full flex items-center justify-between p-4 transition-colors text-left ${
+                        className={`w-full p-4 text-left transition-colors ${
                           isSelected ? "bg-primary/5" : "hover:bg-accent"
                         }`}
                       >
-                        <div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
                           <div className="text-sm font-medium text-foreground">{tx.title}</div>
                           <div className="text-xs text-muted-foreground">{tx.performer} · {tx.date}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-sm font-semibold text-foreground">
-                            {typeof tx.price === "number" ? `${tx.price} ₽` : "—"}
                           </div>
-                          <span className={`chip text-[10px] px-1.5 py-0.5 ${tx.status === "done" ? "status-done" : "status-cancelled"}`}>
-                            {tx.status === "done" ? "Завершена" : "Отменена"}
-                          </span>
+                          <div className="text-left sm:text-right">
+                            <div className="text-sm font-semibold text-foreground">
+                              {typeof tx.price === "number" ? `${tx.price} ₽` : "—"}
+                            </div>
+                            <span className={`chip mt-1 text-[10px] px-1.5 py-0.5 ${tx.status === "done" ? "status-done" : "status-cancelled"}`}>
+                              {tx.status === "done" ? "Завершена" : "Отменена"}
+                            </span>
+                          </div>
                         </div>
                       </button>
 
@@ -474,8 +478,8 @@ const Profile = () => {
 
                 {!reviewsQuery.isLoading && !reviewsQuery.isError && reviews.map((review) => (
                   <div key={review.id} className="card-surface p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                    <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-wrap items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-semibold text-primary">
                           {initials(review.author)}
                         </div>

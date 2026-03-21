@@ -117,7 +117,7 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-8">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
       <div className="w-full max-w-md card-surface p-6 md:p-7">
         <div className="mb-6">
           <Link to="/" className="inline-flex items-center gap-2">
@@ -199,7 +199,7 @@ const AuthPage = () => {
                 placeholder="123456"
                 className="w-full h-11 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
-              <p className="text-[11px] text-muted-foreground mt-1">Код отправлен на {email}</p>
+              <p className="mt-1 break-all text-[11px] text-muted-foreground">Код отправлен на {email}</p>
             </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
@@ -213,7 +213,7 @@ const AuthPage = () => {
               {isSubmitting ? "Отправляем..." : "Отправить код ещё раз"}
             </button>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => {
@@ -221,14 +221,14 @@ const AuthPage = () => {
                   setCode("");
                   setError(null);
                 }}
-                className="h-11 px-4 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors"
+                className="h-11 px-4 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors sm:w-auto"
               >
                 Изменить email
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed sm:flex-1"
               >
                 {isSubmitting ? "Проверяем..." : "Подтвердить"}
               </button>

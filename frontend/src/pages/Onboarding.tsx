@@ -67,7 +67,7 @@ const OnboardingPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-8">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
       <div className="w-full max-w-2xl card-surface p-6 md:p-7">
         <h1 className="text-xl font-semibold text-foreground">Завершите профиль</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -146,18 +146,18 @@ const OnboardingPage = () => {
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
               onClick={() => void logout()}
-              className="h-11 px-4 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors"
+              className="h-11 rounded-lg border border-border px-4 text-sm text-foreground transition-colors hover:bg-accent sm:w-auto"
             >
               Выйти
             </button>
             <button
               type="submit"
               disabled={!canSubmit}
-              className="h-11 px-5 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="h-11 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
               {isSubmitting ? "Сохраняем..." : "Сохранить профиль"}
             </button>

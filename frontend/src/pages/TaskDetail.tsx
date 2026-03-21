@@ -636,7 +636,7 @@ const TaskDetail = () => {
 
   if (!hasValidTaskId) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+      <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6">
         <div className="card-surface p-6 max-w-md w-full">
           <h2 className="text-base font-semibold text-foreground">Некорректный идентификатор задачи</h2>
           <Link to="/" className="inline-block mt-3 text-sm text-primary hover:text-primary/80">Вернуться к ленте</Link>
@@ -649,8 +649,8 @@ const TaskDetail = () => {
     <div className="min-h-screen bg-background">
       <TopNav onCreateRequest={() => setCreateOpen(true)} />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
-        <Link to="/" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-5">
+      <div className="max-w-[1400px] mx-auto px-4 py-4 sm:px-6 sm:py-6">
+        <Link to="/" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:mb-5">
           <ArrowLeft className="w-4 h-4" />
           Назад к бирже
         </Link>
@@ -679,10 +679,10 @@ const TaskDetail = () => {
         )}
 
         {!taskQuery.isLoading && !taskQuery.isError && task && (
-          <div className="flex gap-6">
+          <div className="flex flex-col gap-6 xl:flex-row">
             <div className="flex-1 min-w-0 space-y-5">
-              <div className="card-surface p-6">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="card-surface p-4 sm:p-6">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
                   <span className="text-lg">{task.categoryIcon}</span>
                   <span className="text-sm text-muted-foreground">{task.dorm}</span>
                   <span className={`chip text-xs px-2 py-0.5 ${statusClass}`}>
@@ -696,7 +696,7 @@ const TaskDetail = () => {
                 <h1 className="text-xl font-semibold text-foreground mb-3">{task.title}</h1>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-5">{task.description}</p>
 
-                <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-secondary">
+                <div className="grid grid-cols-1 gap-4 rounded-lg bg-secondary p-4 sm:grid-cols-3">
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-0.5">Оплата</div>
                     <div className="text-sm font-medium text-foreground">{PAYMENT_LABELS[task.paymentType]}</div>
@@ -711,13 +711,13 @@ const TaskDetail = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 mt-5 pt-5 border-t border-border">
+                <div className="mt-5 flex items-center gap-3 border-t border-border pt-5">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
                     {task.requesterAvatar}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-medium text-foreground">{task.requesterName}</div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="flex items-center gap-0.5">
                         <Star className="w-3 h-3 text-warning fill-warning" />
                         <span className="text-xs font-medium text-foreground">{task.requesterRating.toFixed(1)}</span>
@@ -728,13 +728,13 @@ const TaskDetail = () => {
                 </div>
               </div>
 
-              <div className="card-surface p-6">
+              <div className="card-surface p-4 sm:p-6">
                 <h3 className="font-semibold text-sm text-foreground mb-4">Аналитика категории: {task.categoryIcon} История сделок</h3>
 
                 {isAnalyticsLoading ? (
                   <div className="space-y-4">
                     <div className="h-48 rounded-lg bg-secondary animate-pulse" />
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                       {Array.from({ length: 4 }).map((_, index) => (
                         <div key={index} className="h-20 rounded-lg bg-secondary animate-pulse" />
                       ))}
@@ -784,7 +784,7 @@ const TaskDetail = () => {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                       {[
                         { label: "Медианная цена", value: `${categoryAnalytics.median_price_amount} ₽` },
                         { label: "Средняя цена", value: `${categoryAnalytics.avg_price_amount} ₽` },
@@ -813,8 +813,8 @@ const TaskDetail = () => {
               </div>
             </div>
 
-            <div className="w-80 shrink-0 space-y-4">
-              <div className="card-surface p-5 space-y-3 sticky top-20">
+            <div className="w-full shrink-0 space-y-4 xl:w-80">
+              <div className="card-surface space-y-3 p-5 xl:sticky xl:top-20">
                 <button
                   onClick={() => setActionModal("service")}
                   disabled={!canRespond}
@@ -940,7 +940,7 @@ const TaskDetail = () => {
 
                       return (
                         <div key={offer.id} className="p-2.5 rounded-lg bg-secondary">
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="text-xs font-medium text-foreground">
                               {offer.performer?.full_name ?? "Исполнитель"}
                             </div>
@@ -957,7 +957,7 @@ const TaskDetail = () => {
                                 : "Договорная"}
                           </div>
                           {isOwnPendingOffer && (
-                            <div className="mt-2 flex items-center gap-3">
+                            <div className="mt-2 flex flex-wrap items-center gap-3">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -996,14 +996,14 @@ const TaskDetail = () => {
                                 setCounterError(null);
                                 setActionModal("counter");
                               }}
-                              className="text-[11px] text-primary mt-2 ml-3 hover:text-primary/80"
+                              className="mt-2 text-[11px] text-primary hover:text-primary/80"
                             >
                               Контрпредложение
                             </button>
                           )}
 
                           {canChoosePerformer && offer.status === "pending" && (
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => acceptOfferMutation.mutate(offer.id)}
@@ -1169,7 +1169,7 @@ const TaskDetail = () => {
 
                 return (
                   <div key={counter.id} className="p-2 rounded-lg bg-card border border-border">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-[11px] text-muted-foreground">{isOwn ? "Вы" : "Собеседник"}</span>
                       <span className={`chip text-[10px] px-1.5 py-0.5 ${counter.status === "accepted" ? "status-done" : counter.status === "rejected" ? "status-cancelled" : "status-offers"}`}>
                         {counter.status}
@@ -1184,7 +1184,7 @@ const TaskDetail = () => {
                           : "Договорная"}
                     </div>
                     {isPendingForAction && (
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => acceptCounterOfferMutation.mutate(counter.id)}
@@ -1225,7 +1225,7 @@ const TaskDetail = () => {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">Тип оплаты</label>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <button
                     type="button"
                     onClick={() => setCounterPaymentType("fixed_price")}
@@ -1317,7 +1317,7 @@ const TaskDetail = () => {
 
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Тип оплаты</label>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={() => setEditOfferPaymentType("fixed_price")}
@@ -1410,8 +1410,8 @@ const TaskDetail = () => {
                   return (
                     <div
                       key={message.id}
-                      className={`p-2.5 rounded-lg text-xs ${
-                        isOwn ? "bg-primary text-primary-foreground ml-6" : "bg-card border border-border mr-6"
+                      className={`rounded-lg p-2.5 text-xs ${
+                        isOwn ? "ml-2 bg-primary text-primary-foreground sm:ml-6" : "mr-2 border border-border bg-card sm:mr-6"
                       }`}
                     >
                       <div>{message.body}</div>
