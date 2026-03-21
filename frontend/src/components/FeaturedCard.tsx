@@ -1,9 +1,12 @@
 import { Star, ArrowRight, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { SAMPLE_TASKS } from '@/lib/data';
+import { SAMPLE_TASKS, type Task } from '@/lib/data';
 
-export function FeaturedCard() {
-  const task = SAMPLE_TASKS[0];
+interface FeaturedCardProps {
+  task?: Task;
+}
+
+export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
 
   return (
     <Link

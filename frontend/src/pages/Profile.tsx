@@ -4,12 +4,16 @@ import { CreateRequestModal } from '@/components/CreateRequestModal';
 import { TaskCard } from '@/components/TaskCard';
 import { SAMPLE_TASKS, SAMPLE_TRANSACTIONS } from '@/lib/data';
 import { useState } from 'react';
+import { useInteractionStore } from '@/context/interaction-store';
 
 const Profile = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [tab, setTab] = useState<'active' | 'history' | 'reviews'>('active');
+  const [selectedHistoryTxId, setSelectedHistoryTxId] = useState<string | null>(null);
+  const { localTasks } = useInteractionStore();
 
-  const activeTasks = SAMPLE_TASKS.filter(t => t.status === 'open' || t.status === 'offers');
+  const activeTasks = [...localTasks, ...SAMPLE_TASKS].filter((task) => task.status === 'open' || task.status === 'offers');
+  const selectedHistoryTx = SAMPLE_TRANSACTIONS.find((transaction) => transaction.id === selectedHistoryTxId);
   const reviews = [
     { author: 'Мария К.', rating: 5, text: 'Отличная работа! Всё сделал быстро и аккуратно.', date: '10 мар' },
     { author: 'Дмитрий В.', rating: 4, text: 'Хороший исполнитель, рекомендую.', date: '8 мар' },
@@ -106,7 +110,14 @@ const Profile = () => {
             {tab === 'history' && (
               <div className="card-surface">
                 {SAMPLE_TRANSACTIONS.map((tx, i) => (
-                  <div key={tx.id} className={`flex items-center justify-between p-4 hover:bg-accent transition-colors cursor-pointer ${i > 0 ? 'border-t border-border' : ''}`}>
+                  <button
+                    key={tx.id}
+                    type="button"
+                    onClick={() => setSelectedHistoryTxId(tx.id === selectedHistoryTxId ? null : tx.id)}
+                    className={`w-full flex items-center justify-between p-4 transition-colors text-left ${
+                      tx.id === selectedHistoryTxId ? 'bg-primary/5' : 'hover:bg-accent'
+                    } ${i > 0 ? 'border-t border-border' : ''}`}
+                  >
                     <div>
                       <div className="text-sm font-medium text-foreground">{tx.title}</div>
                       <div className="text-xs text-muted-foreground">{tx.performer} · {tx.date}</div>
@@ -117,8 +128,18 @@ const Profile = () => {
                         {tx.status === 'done' ? 'Завершена' : 'Отменена'}
                       </span>
                     </div>
-                  </div>
+                  </button>
                 ))}
+
+                {selectedHistoryTx && (
+                  <div className="p-4 border-t border-border bg-secondary/40">
+                    <h4 className="text-sm font-semibold text-foreground mb-2">Детали выбранной сделки</h4>
+                    <div className="text-sm text-foreground">{selectedHistoryTx.title}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Исполнитель: {selectedHistoryTx.performer} · Оценка: {selectedHistoryTx.rating || '—'} · Статус: {selectedHistoryTx.status === 'done' ? 'завершена' : 'отменена'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
