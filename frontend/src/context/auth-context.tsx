@@ -6,6 +6,7 @@ import { ApiError } from "@/api/client";
 import { clearAuthTokens, hasAuthTokens, setAuthTokens } from "@/auth/storage";
 
 const DEV_SESSION_STORAGE_KEY = "campus_exchange.dev_session_user";
+const SESSION_USER_STORAGE_KEY = "campus_exchange.session_user";
 
 interface RequestCodeMeta {
   status: string;
@@ -90,6 +91,43 @@ function clearDevSessionUser(): void {
   window.localStorage.removeItem(DEV_SESSION_STORAGE_KEY);
 }
 
+function readSessionUser(): MeUser | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(SESSION_USER_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as MeUser;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionUser(user: MeUser): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(SESSION_USER_STORAGE_KEY, JSON.stringify(user));
+}
+
+function clearSessionUser(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(SESSION_USER_STORAGE_KEY);
+}
+
+function isAuthError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"loading" | "anonymous" | "authenticated">("loading");
   const [user, setUser] = useState<MeUser | null>(null);
@@ -112,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!hasAuthTokens()) {
+        clearSessionUser();
         if (!cancelled) {
           setStatus("anonymous");
           setUser(null);
@@ -121,17 +160,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const me = await authService.getMe();
+        writeSessionUser(me);
 
         if (!cancelled) {
           setUser(me);
           setStatus("authenticated");
         }
-      } catch {
-        clearAuthTokens();
+      } catch (error) {
+        if (isAuthError(error)) {
+          clearAuthTokens();
+          clearSessionUser();
+
+          if (!cancelled) {
+            setUser(null);
+            setStatus("anonymous");
+          }
+          return;
+        }
+
+        const cachedUser = readSessionUser();
 
         if (!cancelled) {
-          setUser(null);
-          setStatus("anonymous");
+          if (cachedUser) {
+            setUser(cachedUser);
+            setStatus("authenticated");
+          } else {
+            setUser(null);
+            setStatus("anonymous");
+          }
         }
       }
     };
@@ -157,6 +213,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const devUser = getDevFallbackUser();
       writeDevSessionUser(devUser);
       clearAuthTokens();
+      clearSessionUser();
       setUser(devUser);
       setStatus("authenticated");
     },
@@ -184,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearDevSessionUser();
 
       const me = response.user ?? await authService.getMe();
+      writeSessionUser(me);
 
       setUser(me);
       setStatus("authenticated");
@@ -191,6 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     refreshMe: async () => {
       const me = await authService.getMe();
+      writeSessionUser(me);
       setUser(me);
       setStatus("authenticated");
     },
@@ -198,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     completeProfile: async (payload: UpdateMePayload) => {
       await authService.updateMe(payload);
       const me = await authService.getMe();
+      writeSessionUser(me);
       setUser(me);
       setStatus("authenticated");
     },
@@ -210,6 +270,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         clearAuthTokens();
         clearDevSessionUser();
+        clearSessionUser();
         setUser(null);
         setStatus("anonymous");
       }
