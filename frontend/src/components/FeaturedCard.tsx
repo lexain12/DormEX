@@ -21,11 +21,11 @@ export function FeaturedCard({ task }: FeaturedCardProps) {
   return (
     <Link
       to={`/task/${task.id}`}
-      className="card-surface p-6 border-primary/20 hover:border-primary/40 transition-all group block"
+      className="card-surface block border-primary/20 p-4 transition-all hover:border-primary/40 group sm:p-6"
     >
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="chip urgency-urgent text-xs px-2 py-0.5 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {urgencyLabel}
@@ -39,20 +39,20 @@ export function FeaturedCard({ task }: FeaturedCardProps) {
             {task.description}
           </p>
         </div>
-        <div className="text-right shrink-0 ml-6">
+        <div className="shrink-0 sm:ml-6 sm:text-right">
           <div className="text-2xl font-bold text-foreground">{task.price ? `${task.price} ₽` : 'Договорная'}</div>
           <div className="text-xs text-muted-foreground mt-1">{task.offersCount} предложения</div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-border">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
             {task.requesterAvatar}
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-sm font-medium text-foreground">{task.requesterName}</div>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               <Star className="w-3 h-3 text-warning fill-warning" />
               <span className="text-xs text-foreground font-medium">{task.requesterRating}</span>
               <span className="text-xs text-muted-foreground">· {requesterDealsLabel}</span>

@@ -9,6 +9,7 @@ const CODE_TTL_FALLBACK_SEC = 600;
 const AuthPage = () => {
   const { requestCode, verifyCode, canUseDevSession, startDevSession } = useAuth();
   const { toast } = useToast();
+  const isLocalDev = import.meta.env.DEV;
 
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -19,13 +20,20 @@ const AuthPage = () => {
 
   const deadlineMinutes = useMemo(() => Math.ceil(expiresInSec / 60), [expiresInSec]);
 
+  const sendCode = async (targetEmail: string) => {
+    const result = await requestCode(targetEmail);
+    setExpiresInSec(result.expiresInSec || CODE_TTL_FALLBACK_SEC);
+    setStep("code");
+    return result;
+  };
+
   const handleEmailSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     const normalizedEmail = email.trim();
 
     if (!normalizedEmail) {
-      setError("Введите университетский email");
+      setError("Введите email");
       return;
     }
 
@@ -33,9 +41,7 @@ const AuthPage = () => {
     setError(null);
 
     try {
-      const result = await requestCode(normalizedEmail);
-      setExpiresInSec(result.expiresInSec || CODE_TTL_FALLBACK_SEC);
-      setStep("code");
+      await sendCode(normalizedEmail);
 
       toast({
         title: "Код отправлен",
@@ -51,6 +57,32 @@ const AuthPage = () => {
           description: "Можно войти через dev-режим и проверить остальной функционал.",
         });
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail) {
+      setError("Введите email");
+      setStep("email");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await sendCode(normalizedEmail);
+      toast({
+        title: "Новый код отправлен",
+        description: "Проверьте почту и используйте последнее письмо.",
+      });
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Не удалось отправить код";
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -85,17 +117,17 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-8">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
       <div className="w-full max-w-md card-surface p-6 md:p-7">
         <div className="mb-6">
           <Link to="/" className="inline-flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">DH</span>
+              <span className="text-primary-foreground font-bold text-sm">DX</span>
             </div>
-            <span className="font-semibold text-foreground text-[15px]">DormHub</span>
+            <span className="font-semibold text-foreground text-[15px]">dormex</span>
           </Link>
 
-          <h1 className="text-xl font-semibold text-foreground mt-4">Вход по университетской почте</h1>
+          <h1 className="text-xl font-semibold text-foreground mt-4">Вход по email</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {step === "email"
               ? "Введите email, мы отправим код подтверждения."
@@ -130,6 +162,12 @@ const AuthPage = () => {
               {isSubmitting ? "Отправляем..." : "Получить код"}
             </button>
 
+            {isLocalDev && (
+              <p className="text-[11px] text-muted-foreground">
+                Локально письма с кодом можно открыть в MailHog: `http://localhost:8025`
+              </p>
+            )}
+
             {canUseDevSession && (
               <button
                 type="button"
@@ -161,12 +199,21 @@ const AuthPage = () => {
                 placeholder="123456"
                 className="w-full h-11 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
-              <p className="text-[11px] text-muted-foreground mt-1">Код отправлен на {email}</p>
+              <p className="mt-1 break-all text-[11px] text-muted-foreground">Код отправлен на {email}</p>
             </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
 
-            <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={isSubmitting}
+              className="w-full h-11 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Отправляем..." : "Отправить код ещё раз"}
+            </button>
+
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <button
                 type="button"
                 onClick={() => {
@@ -174,14 +221,14 @@ const AuthPage = () => {
                   setCode("");
                   setError(null);
                 }}
-                className="h-11 px-4 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors"
+                className="h-11 px-4 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors sm:w-auto"
               >
                 Изменить email
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-1 h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed sm:flex-1"
               >
                 {isSubmitting ? "Проверяем..." : "Подтвердить"}
               </button>

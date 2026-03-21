@@ -98,8 +98,8 @@ const Analytics = () => {
     <div className="min-h-screen bg-background">
       <TopNav onCreateRequest={() => setCreateOpen(true)} />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-6">
-        <div className="flex items-center justify-between mb-5">
+      <div className="max-w-[1400px] mx-auto px-4 py-4 sm:px-6 sm:py-6">
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Аналитика сделок</h1>
             <p className="text-sm text-muted-foreground">Статистика цен и завершённых сделок по категориям</p>
@@ -112,11 +112,11 @@ const Analytics = () => {
 
         <CategoryChips active={category} onChange={setCategory} />
 
-        <div className="flex gap-6 mt-5">
+        <div className="mt-5 flex flex-col gap-6 xl:flex-row">
           <div className="flex-1 min-w-0 space-y-5">
             {isLoading && (
               <>
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {Array.from({ length: 4 }).map((_, index) => (
                     <div key={index} className="card-surface h-28 animate-pulse" />
                   ))}
@@ -165,7 +165,7 @@ const Analytics = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   {[
                     { icon: DollarSign, label: "Средняя цена", value: `${analytics.avg_price_amount} ₽`, change: "по категории", color: "text-primary" },
                     { icon: TrendingUp, label: "Медиана", value: `${analytics.median_price_amount} ₽`, change: "по категории", color: "text-success" },
@@ -223,20 +223,22 @@ const Analytics = () => {
                       <div
                         key={item.range}
                         onClick={() => setSelectedRange(item.range === selectedRange ? null : item.range)}
-                        className={`flex items-center justify-between p-4 cursor-pointer transition-colors ${
+                        className={`cursor-pointer p-4 transition-colors ${
                           selectedRange === item.range ? "bg-primary/5" : "hover:bg-accent"
                         } ${i > 0 ? "border-t border-border" : ""}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="text-base">📊</span>
-                          <div>
-                            <div className="text-sm font-medium text-foreground">Диапазон {item.range} ₽</div>
-                            <div className="text-xs text-muted-foreground">Сделки в этом диапазоне</div>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-base">📊</span>
+                            <div>
+                              <div className="text-sm font-medium text-foreground">Диапазон {item.range} ₽</div>
+                              <div className="text-xs text-muted-foreground">Сделки в этом диапазоне</div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-right flex items-center gap-4">
-                          <div className="text-sm font-semibold text-foreground w-16 text-right">{item.count}</div>
-                          <span className="chip text-[10px] px-2 py-0.5 status-done">сделок</span>
+                          <div className="flex items-center gap-4 text-left sm:text-right">
+                            <div className="w-auto text-sm font-semibold text-foreground sm:w-16">{item.count}</div>
+                            <span className="chip text-[10px] px-2 py-0.5 status-done">сделок</span>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -246,9 +248,9 @@ const Analytics = () => {
             )}
           </div>
 
-          <div className="w-80 shrink-0">
+          <div className="w-full shrink-0 xl:w-80">
             {selectedHistogram ? (
-              <div className="card-surface p-5 sticky top-20 animate-fade-in">
+              <div className="card-surface animate-fade-in p-5 xl:sticky xl:top-20">
                 <h3 className="font-semibold text-sm text-foreground mb-4">Детали диапазона</h3>
                 <div className="space-y-3">
                   <div>

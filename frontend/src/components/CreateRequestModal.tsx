@@ -154,10 +154,10 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-foreground/20 backdrop-blur-sm" onClick={handleClose} />
-      <div className="relative card-surface w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto animate-fade-in">
-        <div className="flex items-center justify-between mb-6">
+      <div className="relative card-surface w-full max-w-lg rounded-t-2xl border-b-0 p-4 pb-5 max-h-[92vh] overflow-y-auto animate-fade-in sm:mx-4 sm:rounded-xl sm:border sm:p-6 sm:pb-6 sm:max-h-[90vh]">
+        <div className="mb-5 flex items-center justify-between sm:mb-6">
           <h2 className="text-lg font-semibold text-foreground">Создать заявку</h2>
           <button
             onClick={handleClose}
@@ -220,7 +220,7 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Срочность</label>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(["urgent", "today", "week", "none"] as const).map((itemUrgency) => (
                 <button
                   key={itemUrgency}
@@ -236,7 +236,7 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Оплата</label>
-            <div className="flex gap-2 mb-3">
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
               <button
                 onClick={() => setPaymentMode("fixed")}
                 className={`chip flex-1 justify-center text-xs ${paymentMode === "fixed" ? "chip-active" : "chip-inactive"}`}

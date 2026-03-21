@@ -29,3 +29,6 @@ backend/data/*.db
 *.njsproj
 *.sln
 *.sw?
+
+# Local environment
+.env

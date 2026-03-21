@@ -4,7 +4,25 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from .exceptions import AuthenticationError, DomainValidationError, ForbiddenError
+from .exceptions import (
+    AuthenticationError,
+    DomainValidationError,
+    ExternalServiceError,
+    ForbiddenError,
+    TooManyRequestsError,
+)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def build_error_payload(
@@ -25,6 +43,26 @@ def build_error_payload(
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(TooManyRequestsError)
+    async def too_many_requests_handler(_, exc: TooManyRequestsError) -> JSONResponse:
+        return JSONResponse(
+            status_code=429,
+            content=build_error_payload(
+                code="rate_limited",
+                message=str(exc),
+            ),
+        )
+
+    @app.exception_handler(ExternalServiceError)
+    async def external_service_handler(_, exc: ExternalServiceError) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content=build_error_payload(
+                code="service_unavailable",
+                message=str(exc),
+            ),
+        )
+
     @app.exception_handler(AuthenticationError)
     async def authentication_handler(_, exc: AuthenticationError) -> JSONResponse:
         return JSONResponse(
@@ -59,12 +97,16 @@ def register_error_handlers(app: FastAPI) -> None:
     async def request_validation_handler(_, exc: RequestValidationError) -> JSONResponse:
         first_error = exc.errors()[0] if exc.errors() else None
         field = None
+        message = "Invalid request payload"
         if first_error is not None:
             field_parts = [str(part) for part in first_error["loc"] if part not in ("body", "query", "path")]
             if field_parts:
                 field = ".".join(field_parts)
+            raw_message = str(first_error.get("msg") or "").strip()
+            if raw_message:
+                message = raw_message.removeprefix("Value error, ").strip() or message
 
-        details: dict[str, Any] = {"errors": exc.errors()}
+        details: dict[str, Any] = {"errors": _json_safe(exc.errors())}
         if field is not None:
             details["field"] = field
 
@@ -72,7 +114,7 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=422,
             content=build_error_payload(
                 code="validation_error",
-                message="Invalid request payload",
+                message=message,
                 details=details,
             ),
         )

@@ -51,6 +51,51 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217 91% 60%;
   }
+
+  .dark {
+    --background: 222 28% 10%;
+    --foreground: 210 20% 96%;
+
+    --card: 222 24% 13%;
+    --card-foreground: 210 20% 96%;
+
+    --popover: 222 24% 13%;
+    --popover-foreground: 210 20% 96%;
+
+    --primary: 217 91% 66%;
+    --primary-foreground: 222 28% 10%;
+
+    --secondary: 222 20% 18%;
+    --secondary-foreground: 210 18% 92%;
+
+    --muted: 222 18% 18%;
+    --muted-foreground: 215 12% 68%;
+
+    --accent: 222 18% 20%;
+    --accent-foreground: 210 20% 96%;
+
+    --destructive: 0 78% 62%;
+    --destructive-foreground: 210 20% 96%;
+
+    --success: 160 66% 42%;
+    --success-foreground: 210 20% 96%;
+
+    --warning: 40 90% 56%;
+    --warning-foreground: 222 28% 10%;
+
+    --border: 222 18% 24%;
+    --input: 222 18% 24%;
+    --ring: 217 91% 66%;
+
+    --sidebar-background: 222 24% 13%;
+    --sidebar-foreground: 210 20% 96%;
+    --sidebar-primary: 217 91% 66%;
+    --sidebar-primary-foreground: 222 28% 10%;
+    --sidebar-accent: 222 18% 20%;
+    --sidebar-accent-foreground: 210 20% 96%;
+    --sidebar-border: 222 18% 24%;
+    --sidebar-ring: 217 91% 66%;
+  }
 }
 
 @layer base {
@@ -58,8 +103,12 @@
     @apply border-border;
   }
 
+  html {
+    @apply bg-background;
+  }
+
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground font-sans antialiased transition-colors duration-200;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }

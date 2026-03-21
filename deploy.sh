@@ -48,5 +48,5 @@ else
 fi
 
 echo "Deployment completed successfully!"
-echo "Access the application at http://localhost/dormex"
-echo "Backend API is available at http://localhost/api/v1"
+echo "Access the application at http://localhost:${NGINX_HOST_PORT:-8080}/dormex/"
+echo "Backend API is available at http://localhost:${NGINX_HOST_PORT:-8080}/api/v1"
