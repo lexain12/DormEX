@@ -8,3 +8,11 @@ class AuthenticationError(Exception):
 
 class ForbiddenError(Exception):
     pass
+
+
+class TooManyRequestsError(Exception):
+    pass
+
+
+class ExternalServiceError(Exception):
+    pass

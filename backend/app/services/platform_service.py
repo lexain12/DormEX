@@ -1,23 +1,45 @@
 from typing import Any
 
-from ..core.auth_tokens import create_access_token, create_refresh_token
+from ..core.auth_tokens import create_access_token, create_refresh_token, generate_verification_code
 from ..core.exceptions import AuthenticationError, DomainValidationError
 from ..repositories.platform_repository import PlatformRepository
 from .current_user_service import CurrentUserContext
+from .email_service import EmailService
 
 
 class PlatformService:
-    def __init__(self, repository: PlatformRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: PlatformRepository | None = None,
+        email_service: EmailService | None = None,
+    ) -> None:
         self.repository = repository or PlatformRepository()
+        self.email_service = email_service or EmailService()
 
     def request_email_code(self, email: str) -> dict[str, Any]:
-        university = self.repository.get_university_by_email(email)
+        normalized_email = email.lower().strip()
+
+        university = self.repository.get_university_by_email(normalized_email)
         if university is None:
             raise DomainValidationError("Этот email-домен не привязан к университету")
 
-        payload = self.repository.create_email_code(email, university["id"])
-        print(f"[auth] verification code for {email.lower().strip()}: {self.repository.demo_code}")
-        return payload
+        verification_code = generate_verification_code()
+        payload = self.repository.create_email_code(normalized_email, university["id"], verification_code)
+
+        try:
+            self.email_service.send_verification_code(
+                recipient_email=normalized_email,
+                verification_code=verification_code,
+                expires_in_sec=payload["expires_in_sec"],
+            )
+        except Exception:
+            self.repository.invalidate_email_code(payload["id"])
+            raise
+
+        return {
+            "status": payload["status"],
+            "expires_in_sec": payload["expires_in_sec"],
+        }
 
     def verify_email_code(self, email: str, code: str, *, user_agent: str | None, ip: str | None) -> dict[str, Any]:
         user = self.repository.verify_email_code_and_get_user(email, code)

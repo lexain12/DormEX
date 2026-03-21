@@ -1,21 +1,48 @@
+import os
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from email_validator import EmailNotValidError, validate_email
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 TaskCategory = Literal["cleaning", "moving", "delivery", "tech_help", "study_help", "other"]
 TaskUrgency = Literal["urgent", "today", "this_week", "flexible"]
 TaskPaymentType = Literal["fixed_price", "negotiable", "barter"]
 TaskVisibility = Literal["dormitory", "university"]
+LOCAL_AUTH_EMAIL_DOMAIN = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
+SIMPLE_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-class EmailCodeRequest(BaseModel):
+class EmailPayloadMixin(BaseModel):
     email: str
 
+    @field_validator("email")
+    @classmethod
+    def validate_email_field(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        try:
+            return validate_email(normalized_value, check_deliverability=False).normalized
+        except EmailNotValidError:
+            if normalized_value.endswith(f"@{LOCAL_AUTH_EMAIL_DOMAIN}") and SIMPLE_EMAIL_RE.match(normalized_value):
+                return normalized_value
+            raise ValueError("Введите корректный email")
 
-class EmailCodeVerifyRequest(BaseModel):
-    email: str
-    code: str = Field(min_length=4, max_length=12)
+
+class EmailCodeRequest(EmailPayloadMixin):
+    pass
+
+
+class EmailCodeVerifyRequest(EmailPayloadMixin):
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def validate_code_field(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not re.fullmatch(r"\d{6}", normalized_value):
+            raise ValueError("Введите 6-значный код")
+        return normalized_value
 
 
 class RefreshTokenRequest(BaseModel):

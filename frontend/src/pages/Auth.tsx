@@ -9,6 +9,7 @@ const CODE_TTL_FALLBACK_SEC = 600;
 const AuthPage = () => {
   const { requestCode, verifyCode, canUseDevSession, startDevSession } = useAuth();
   const { toast } = useToast();
+  const isLocalDev = import.meta.env.DEV;
 
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
@@ -18,6 +19,13 @@ const AuthPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const deadlineMinutes = useMemo(() => Math.ceil(expiresInSec / 60), [expiresInSec]);
+
+  const sendCode = async (targetEmail: string) => {
+    const result = await requestCode(targetEmail);
+    setExpiresInSec(result.expiresInSec || CODE_TTL_FALLBACK_SEC);
+    setStep("code");
+    return result;
+  };
 
   const handleEmailSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -33,9 +41,7 @@ const AuthPage = () => {
     setError(null);
 
     try {
-      const result = await requestCode(normalizedEmail);
-      setExpiresInSec(result.expiresInSec || CODE_TTL_FALLBACK_SEC);
-      setStep("code");
+      await sendCode(normalizedEmail);
 
       toast({
         title: "Код отправлен",
@@ -51,6 +57,32 @@ const AuthPage = () => {
           description: "Можно войти через dev-режим и проверить остальной функционал.",
         });
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendCode = async () => {
+    const normalizedEmail = email.trim();
+
+    if (!normalizedEmail) {
+      setError("Введите университетский email");
+      setStep("email");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      await sendCode(normalizedEmail);
+      toast({
+        title: "Новый код отправлен",
+        description: "Проверьте почту и используйте последнее письмо.",
+      });
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Не удалось отправить код";
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -130,6 +162,12 @@ const AuthPage = () => {
               {isSubmitting ? "Отправляем..." : "Получить код"}
             </button>
 
+            {isLocalDev && (
+              <p className="text-[11px] text-muted-foreground">
+                Локально письма с кодом можно открыть в MailHog: `http://localhost:8025`
+              </p>
+            )}
+
             {canUseDevSession && (
               <button
                 type="button"
@@ -165,6 +203,15 @@ const AuthPage = () => {
             </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
+
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={isSubmitting}
+              className="w-full h-11 rounded-lg border border-border text-sm text-foreground hover:bg-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Отправляем..." : "Отправить код ещё раз"}
+            </button>
 
             <div className="flex gap-2">
               <button

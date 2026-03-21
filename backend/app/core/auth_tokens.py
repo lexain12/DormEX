@@ -5,13 +5,13 @@ import json
 import os
 import secrets
 import time
-from typing import Any
 
 from .exceptions import AuthenticationError
 
 
 ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET", "dev-access-token-secret")
 ACCESS_TOKEN_TTL_SEC = int(os.getenv("ACCESS_TOKEN_TTL_SEC", "3600"))
+EMAIL_CODE_LENGTH = int(os.getenv("EMAIL_CODE_LENGTH", "6"))
 
 
 def _encode_segment(data: bytes) -> str:
@@ -81,6 +81,16 @@ def hash_refresh_token(token: str) -> str:
 
 def hash_verification_code(code: str) -> str:
     return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def generate_verification_code(length: int = EMAIL_CODE_LENGTH) -> str:
+    if length <= 0:
+        raise ValueError("Verification code length must be positive")
+
+    digits = "".join(str(secrets.randbelow(10)) for _ in range(length))
+    if digits[0] == "0":
+        return f"{secrets.randbelow(9) + 1}{digits[1:]}"
+    return digits
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:

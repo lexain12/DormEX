@@ -18,6 +18,7 @@ docker compose up --build
 - backend api через nginx: `http://localhost/api/v1`
 - backend напрямую: `http://localhost:3000`
 - postgres: `localhost:5433`
+- MailHog UI: `http://localhost:8025`
 
 ## Что внутри
 
@@ -58,11 +59,25 @@ Backend при старте подготавливает локальные demo
 - несколько задач в состояниях `open`, `offers`, `in_progress`, `completed`, `cancelled`;
 - отклики, чат, отзывы и уведомления.
 
-Для локального входа email-код сейчас фиксированный:
+Локальная авторизация теперь отправляет настоящий одноразовый код по SMTP в MailHog:
 
-- код подтверждения: `123456`
+- открой `http://localhost:8025`;
+- запроси код для email с доменом `campus.test`;
+- письмо появится в интерфейсе MailHog;
+- возьми код из письма и введи его во frontend.
 
-Это сделано специально для интеграционного тестирования, пока реальная отправка email не подключена.
+По умолчанию backend использует локальный SMTP MailHog, но при необходимости можно переопределить:
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME`
+- `EMAIL_CODE_TTL_SEC`
+- `EMAIL_CODE_RESEND_INTERVAL_SEC`
 
 ## Миграции
 
