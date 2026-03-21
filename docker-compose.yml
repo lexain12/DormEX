@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16
+    pull_policy: never
+    container_name: campus_exchange_postgres
+    environment:
+      POSTGRES_DB: campus_exchange
+      POSTGRES_USER: campus_user
+      POSTGRES_PASSWORD: campus_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campus_user -d campus_exchange"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  liquibase:
+    image: liquibase/liquibase:4.29
+    pull_policy: never
+    container_name: campus_exchange_liquibase
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - --search-path=/liquibase/changelog
+      - --changelog-file=db.changelog-master.yaml
+      - --url=jdbc:postgresql://postgres:5432/campus_exchange
+      - --username=campus_user
+      - --password=campus_pass
+      - update
+    volumes:
+      - ./backend/liquibase/changelog:/liquibase/changelog
+
+  backend:
+    image: campus-exchange-hub-01-backend:latest
+    pull_policy: never
+    container_name: campus_exchange_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      liquibase:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://campus_user:campus_pass@postgres:5432/campus_exchange
+    ports:
+      - "3000:3000"
+
+  frontend:
+    image: campus-exchange-hub-01-frontend:latest
+    pull_policy: never
+    container_name: campus_exchange_frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
