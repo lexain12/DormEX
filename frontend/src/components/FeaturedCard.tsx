@@ -1,12 +1,12 @@
 import { Star, ArrowRight, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { SAMPLE_TASKS, type Task } from '@/lib/data';
+import { type Task } from '@/lib/data';
 
 interface FeaturedCardProps {
-  task?: Task;
+  task: Task;
 }
 
-export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
+export function FeaturedCard({ task }: FeaturedCardProps) {
   const urgencyLabel = task.urgency === 'urgent'
     ? 'Срочно'
     : task.urgency === 'today'
@@ -14,6 +14,9 @@ export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
       : task.urgency === 'week'
         ? 'На неделе'
         : 'Без срока';
+  const requesterDealsLabel = task.requesterCompletedTasksCount && task.requesterCompletedTasksCount > 0
+    ? `${task.requesterCompletedTasksCount} сделок`
+    : 'Новый пользователь';
 
   return (
     <Link
@@ -52,7 +55,7 @@ export function FeaturedCard({ task = SAMPLE_TASKS[0] }: FeaturedCardProps) {
             <div className="flex items-center gap-1">
               <Star className="w-3 h-3 text-warning fill-warning" />
               <span className="text-xs text-foreground font-medium">{task.requesterRating}</span>
-              <span className="text-xs text-muted-foreground">· 12 сделок</span>
+              <span className="text-xs text-muted-foreground">· {requesterDealsLabel}</span>
             </div>
           </div>
         </div>
