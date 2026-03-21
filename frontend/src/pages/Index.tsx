@@ -20,12 +20,15 @@ const Index = () => {
   const categoryParam = searchParams.get("category") ?? "all";
   const category = CATEGORIES.some((cat) => cat.id === categoryParam) ? categoryParam : "all";
   const searchValue = (searchParams.get("search") ?? "").trim();
+  const dormitoryParam = Number(searchParams.get("dormitory_id"));
+  const dormitoryId = Number.isFinite(dormitoryParam) && dormitoryParam > 0 ? dormitoryParam : undefined;
 
   const tasksQuery = useQuery({
-    queryKey: queryKeys.tasks({ category, searchValue }),
+    queryKey: queryKeys.tasks({ category, searchValue, dormitoryId: dormitoryId ?? null }),
     queryFn: () => tasksService.list({
       category: category === "all" ? undefined : category,
       search: searchValue || undefined,
+      dormitory_id: dormitoryId,
       limit: 30,
       offset: 0,
     }),

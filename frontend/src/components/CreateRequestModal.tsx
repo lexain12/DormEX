@@ -61,16 +61,18 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
   });
 
   const visibilityLabel = useMemo(() => {
+    const currentDormLabel = user?.dormitory?.name ?? selectedDorm;
+
     if (visibility === "campus") {
       return "Весь кампус";
     }
 
     if (visibility === "floor") {
-      return `${selectedDorm}, мой этаж`;
+      return `${currentDormLabel}, мой этаж`;
     }
 
-    return selectedDorm;
-  }, [selectedDorm, visibility]);
+    return currentDormLabel;
+  }, [selectedDorm, user?.dormitory?.name, visibility]);
 
   const resetForm = () => {
     setTitle("");
@@ -299,7 +301,7 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
               onChange={(event) => setVisibility(event.target.value as VisibilityMode)}
               className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none"
             >
-              <option value="dorm">Моё общежитие ({selectedDorm})</option>
+              <option value="dorm">Моё общежитие ({user?.dormitory?.name ?? selectedDorm})</option>
               <option value="campus">Весь кампус</option>
               <option value="floor">Только мой этаж</option>
             </select>

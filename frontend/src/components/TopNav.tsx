@@ -1,11 +1,12 @@
 import { Bell, CheckCheck, ChevronDown, Plus, Search } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { DORM_OPTIONS, useInteractionStore } from "@/context/interaction-store";
 import { useAuth } from "@/context/auth-context";
 import { queryKeys } from "@/api/query-keys";
+import { authService } from "@/api/services/auth";
 import { notificationsService } from "@/api/services/notifications";
 import { formatEventTime, resolveNotificationTaskId } from "@/lib/task-mappers";
 import {
@@ -53,6 +54,12 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
     refetchInterval: notificationsOpen ? 30_000 : false,
   });
 
+  const dormitoriesQuery = useQuery({
+    queryKey: queryKeys.dormitories,
+    queryFn: authService.getDormitories,
+    enabled: isAuthenticated,
+  });
+
   const markReadMutation = useMutation({
     mutationFn: notificationsService.markRead,
     onSuccess: async () => {
@@ -95,6 +102,24 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
 
   const notifications = notificationsQuery.data?.items ?? [];
   const unreadNotificationsCount = unreadCountQuery.data?.unread_count ?? 0;
+  const dormitoryOptions = useMemo(() => {
+    const apiDormitories = dormitoriesQuery.data ?? [];
+
+    if (apiDormitories.length > 0) {
+      return [
+        { id: null as number | null, name: "Все общежития" },
+        ...apiDormitories.map((dormitory) => ({ id: dormitory.id, name: dormitory.name })),
+      ];
+    }
+
+    return [
+      { id: null as number | null, name: "Все общежития" },
+      ...DORM_OPTIONS.map((name) => ({ id: null as number | null, name })),
+    ];
+  }, [dormitoriesQuery.data]);
+  const selectedDormitoryId = useMemo(() => {
+    return dormitoryOptions.find((option) => option.name === selectedDorm)?.id ?? null;
+  }, [dormitoryOptions, selectedDorm]);
   const avatarInitials = user?.full_name
     ? user.full_name
       .split(" ")
@@ -109,6 +134,31 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
     setSearchValue(params.get("search") ?? "");
   }, [location.search]);
 
+  useEffect(() => {
+    if (location.pathname !== "/") {
+      return;
+    }
+
+    if (!dormitoriesQuery.data?.length) {
+      return;
+    }
+
+    const params = new URLSearchParams(location.search);
+    const rawDormitoryId = Number(params.get("dormitory_id"));
+
+    if (!Number.isFinite(rawDormitoryId) || rawDormitoryId <= 0) {
+      if (selectedDorm !== "Все общежития") {
+        setSelectedDorm("Все общежития");
+      }
+      return;
+    }
+
+    const matchedDormitory = dormitoriesQuery.data.find((dormitory) => dormitory.id === rawDormitoryId);
+    if (matchedDormitory && matchedDormitory.name !== selectedDorm) {
+      setSelectedDorm(matchedDormitory.name);
+    }
+  }, [dormitoriesQuery.data, location.search, selectedDorm, setSelectedDorm]);
+
   const handleSearchSubmit = (event: FormEvent) => {
     event.preventDefault();
 
@@ -119,6 +169,28 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
       params.set("search", normalizedValue);
     } else {
       params.delete("search");
+    }
+
+    if (selectedDormitoryId) {
+      params.set("dormitory_id", String(selectedDormitoryId));
+    } else {
+      params.delete("dormitory_id");
+    }
+
+    navigate({
+      pathname: "/",
+      search: params.toString() ? `?${params.toString()}` : "",
+    });
+  };
+
+  const handleDormitorySelect = (option: { id: number | null; name: string }) => {
+    setSelectedDorm(option.name);
+
+    const params = new URLSearchParams(location.search);
+    if (option.id) {
+      params.set("dormitory_id", String(option.id));
+    } else {
+      params.delete("dormitory_id");
     }
 
     navigate({
@@ -176,13 +248,13 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuLabel>Выберите общежитие</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {DORM_OPTIONS.map((dorm) => (
+            {dormitoryOptions.map((dorm) => (
               <DropdownMenuItem
-                key={dorm}
-                onSelect={() => setSelectedDorm(dorm)}
-                className={dorm === selectedDorm ? "bg-primary/10 text-primary" : ""}
+                key={`${dorm.id ?? "all"}-${dorm.name}`}
+                onSelect={() => handleDormitorySelect(dorm)}
+                className={dorm.name === selectedDorm ? "bg-primary/10 text-primary" : ""}
               >
-                {dorm}
+                {dorm.name}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
