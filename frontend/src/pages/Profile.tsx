@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, Clock, Shield, Star } from "lucide-react";
 
@@ -162,6 +162,10 @@ const Profile = () => {
   }, [cancelledTasksQuery.data, completedTasksQuery.data]);
 
   const selectedHistoryTx = historyItems.find((transaction) => transaction.id === selectedHistoryTxId);
+  const isHistoryLoading = completedTasksQuery.isLoading || cancelledTasksQuery.isLoading;
+  const historyFailedCount = Number(completedTasksQuery.isError) + Number(cancelledTasksQuery.isError);
+  const hasHistoryOnlyErrors = historyFailedCount > 0 && historyItems.length === 0;
+  const hasHistoryPartialError = historyFailedCount > 0 && historyItems.length > 0;
 
   const reviews = useMemo(() => {
     return (reviewsQuery.data ?? []).map((review) => ({
@@ -184,6 +188,16 @@ const Profile = () => {
   const activeCount = activeTasks.length;
   const createdCount = Number(profileQuery.data?.created_tasks_count ?? 0);
   const reviewsCount = Number(profileQuery.data?.reviews_count ?? reviews.length);
+
+  useEffect(() => {
+    if (!selectedHistoryTxId) {
+      return;
+    }
+
+    if (!selectedHistoryTx) {
+      setSelectedHistoryTxId(null);
+    }
+  }, [selectedHistoryTx, selectedHistoryTxId]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -315,7 +329,7 @@ const Profile = () => {
 
             {tab === "history" && (
               <div className="card-surface">
-                {(completedTasksQuery.isLoading || cancelledTasksQuery.isLoading) && (
+                {isHistoryLoading && (
                   <div className="p-4 space-y-2">
                     {Array.from({ length: 4 }).map((_, index) => (
                       <div key={index} className="h-14 rounded-lg bg-secondary animate-pulse" />
@@ -323,7 +337,7 @@ const Profile = () => {
                   </div>
                 )}
 
-                {!completedTasksQuery.isLoading && !cancelledTasksQuery.isLoading && (completedTasksQuery.isError || cancelledTasksQuery.isError) && (
+                {!isHistoryLoading && hasHistoryOnlyErrors && (
                   <div className="p-4 text-sm text-foreground">
                     Не удалось загрузить историю сделок.
                     <button
@@ -339,11 +353,27 @@ const Profile = () => {
                   </div>
                 )}
 
-                {!completedTasksQuery.isLoading && !cancelledTasksQuery.isLoading && !completedTasksQuery.isError && !cancelledTasksQuery.isError && historyItems.length === 0 && (
+                {!isHistoryLoading && hasHistoryPartialError && (
+                  <div className="p-4 border-b border-border text-sm text-foreground">
+                    Часть истории временно недоступна. Показаны только доступные записи.
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void completedTasksQuery.refetch();
+                        void cancelledTasksQuery.refetch();
+                      }}
+                      className="ml-2 text-primary hover:text-primary/80"
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                )}
+
+                {!isHistoryLoading && !hasHistoryOnlyErrors && historyItems.length === 0 && (
                   <div className="p-4 text-sm text-muted-foreground">История сделок пока пуста.</div>
                 )}
 
-                {!completedTasksQuery.isLoading && !cancelledTasksQuery.isLoading && !completedTasksQuery.isError && !cancelledTasksQuery.isError && historyItems.map((tx, i) => {
+                {!isHistoryLoading && !hasHistoryOnlyErrors && historyItems.map((tx, i) => {
                   const isSelected = tx.id === selectedHistoryTxId;
 
                   return (
