@@ -29,15 +29,15 @@ fi
 # Remove old images
 echo "Removing old Docker images..."
 docker rmi campus-exchange-hub-01-backend:latest || true
-docker rmi campus-exchange-hub-01-frontend:latest || true
+docker rmi campus-exchange-hub-01-nginx:latest || true
 
 # Build the backend Docker image
 echo "Building backend Docker image..."
 docker build -t campus-exchange-hub-01-backend:latest ./backend
 
-# Build the frontend Docker image
-echo "Building frontend Docker image..."
-docker build -t campus-exchange-hub-01-frontend:latest ./frontend
+# Build the nginx image with bundled frontend
+echo "Building nginx Docker image..."
+docker build -t campus-exchange-hub-01-nginx:latest -f nginx/Dockerfile .
 
 # Start services with docker-compose
 echo "Starting services..."
@@ -48,5 +48,5 @@ else
 fi
 
 echo "Deployment completed successfully!"
-echo "Access the application at http://localhost/dormex"
-echo "Backend API is available at http://localhost/api"
+echo "Access the application at http://localhost:${NGINX_HOST_PORT:-8080}/dormex/"
+echo "Backend API is available at http://localhost:${NGINX_HOST_PORT:-8080}/api/v1"

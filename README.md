@@ -12,10 +12,16 @@
 docker compose up --build
 ```
 
+Если у тебя свободен `:80`, можно вернуть поведение старого nginx-конфига:
+
+```bash
+NGINX_HOST_PORT=80 docker compose up --build
+```
+
 Сервисы будут доступны по адресам:
 
-- app через nginx: `http://localhost/dormex/`
-- backend api через nginx: `http://localhost/api/v1`
+- app через nginx: `http://localhost:8080/dormex/`
+- backend api через nginx: `http://localhost:8080/api/v1`
 - backend напрямую: `http://localhost:3000`
 - postgres: `localhost:5433`
 - MailHog UI: `http://localhost:8025`
