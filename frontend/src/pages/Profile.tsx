@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle, Clock, Shield, Star } from "lucide-react";
 
 import { queryKeys } from "@/api/query-keys";
+import { tasksService } from "@/api/services/tasks";
 import { usersService } from "@/api/services/users";
 import { CreateRequestModal } from "@/components/CreateRequestModal";
 import { TaskCard } from "@/components/TaskCard";
@@ -64,19 +65,37 @@ const Profile = () => {
 
   const activeTasksQuery = useQuery({
     queryKey: queryKeys.userTasks(currentUserId ?? 0, "customer", "active"),
-    queryFn: () => usersService.getTasks(currentUserId as number, { role: "customer", status: "active" }),
+    queryFn: async () => {
+      try {
+        return await tasksService.listMyTasks({ role: "customer", status: "active" });
+      } catch {
+        return usersService.getTasks(currentUserId as number, { role: "customer", status: "active" });
+      }
+    },
     enabled: apiEnabled,
   });
 
   const completedTasksQuery = useQuery({
     queryKey: queryKeys.userTasks(currentUserId ?? 0, "customer", "completed"),
-    queryFn: () => usersService.getTasks(currentUserId as number, { role: "customer", status: "completed" }),
+    queryFn: async () => {
+      try {
+        return await tasksService.listMyTasks({ role: "customer", status: "completed" });
+      } catch {
+        return usersService.getTasks(currentUserId as number, { role: "customer", status: "completed" });
+      }
+    },
     enabled: apiEnabled,
   });
 
   const cancelledTasksQuery = useQuery({
     queryKey: queryKeys.userTasks(currentUserId ?? 0, "customer", "cancelled"),
-    queryFn: () => usersService.getTasks(currentUserId as number, { role: "customer", status: "cancelled" }),
+    queryFn: async () => {
+      try {
+        return await tasksService.listMyTasks({ role: "customer", status: "cancelled" });
+      } catch {
+        return usersService.getTasks(currentUserId as number, { role: "customer", status: "cancelled" });
+      }
+    },
     enabled: apiEnabled,
   });
 

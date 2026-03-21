@@ -3,6 +3,7 @@ import type {
   CreateTaskPayload,
   TaskDetailDto,
   TaskListItemDto,
+  UserTaskDto,
   TaskListResponse,
 } from "@/api/types";
 
@@ -16,6 +17,11 @@ interface ListTasksParams {
   search?: string;
   limit?: number;
   offset?: number;
+}
+
+interface MyTasksParams {
+  role?: "customer" | "performer";
+  status?: "active" | "completed" | "cancelled";
 }
 
 export const tasksService = {
@@ -42,6 +48,18 @@ export const tasksService = {
     method: "POST",
     body: payload,
   }),
+
+  listMyTasks: async (params: MyTasksParams = {}) => {
+    const response = await apiRequest<UserTaskDto[] | { items: UserTaskDto[] }>("/me/tasks", {
+      query: params,
+    });
+
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    return response.items ?? [];
+  },
 
   cancel: (taskId: number, reason: string) => apiRequest<{ status?: string }>(`/tasks/${taskId}/cancel`, {
     method: "POST",
