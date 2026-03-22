@@ -9,7 +9,7 @@ import { useAuth } from "@/context/auth-context";
 import { queryKeys } from "@/api/query-keys";
 import { authService } from "@/api/services/auth";
 import { notificationsService } from "@/api/services/notifications";
-import { formatEventTime, resolveNotificationTaskId } from "@/lib/task-mappers";
+import { formatEventTime, resolveNotificationDestination } from "@/lib/task-mappers";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -319,7 +319,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
                 )}
 
                 {!notificationsQuery.isLoading && !notificationsQuery.isError && notifications.map((notification) => {
-                  const taskId = resolveNotificationTaskId(notification);
+                  const destination = resolveNotificationDestination(notification);
 
                   return (
                     <div
@@ -353,13 +353,13 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
                           </button>
                         )}
 
-                        {taskId && (
+                        {destination && (
                           <Link
-                            to={`/task/${taskId}`}
+                            to={destination.to}
                             onClick={() => setNotificationsOpen(false)}
                             className="text-[11px] text-primary hover:text-primary/80"
                           >
-                            Открыть задачу
+                            {destination.label}
                           </Link>
                         )}
                       </div>

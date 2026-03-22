@@ -48,7 +48,8 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
         title: "Заявка опубликована",
         description: "Она уже доступна в ленте задач.",
       });
-      handleClose();
+      resetForm();
+      onClose();
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "Не удалось создать заявку";

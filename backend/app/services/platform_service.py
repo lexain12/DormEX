@@ -1,4 +1,5 @@
 from typing import Any
+import os
 
 from ..core.auth_tokens import create_access_token, create_refresh_token, generate_verification_code
 from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError
@@ -18,6 +19,15 @@ class PlatformService:
 
     def request_email_code(self, email: str) -> dict[str, Any]:
         normalized_email = email.lower().strip()
+        local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
+
+        if (
+            self.email_service.smtp_host != "mailhog"
+            and normalized_email.endswith(f"@{local_auth_email_domain}")
+        ):
+            raise DomainValidationError(
+                f"Адреса @{local_auth_email_domain} работают только с локальной почтой MailHog. Для реальной отправки укажите существующий email."
+            )
 
         university = self.repository.get_university_by_email(normalized_email)
         if university is None:
@@ -275,6 +285,17 @@ class PlatformService:
 
     def open_task_dispute(self, task_id: int, current_user: CurrentUserContext, comment: str) -> dict[str, Any]:
         return self.repository.open_task_dispute(task_id, user_id=current_user.id, comment=comment)
+
+    def list_task_reviews(self, task_id: int, current_user: CurrentUserContext) -> list[dict[str, Any]]:
+        return self.repository.list_task_reviews(
+            task_id,
+            current_user_id=current_user.id,
+            current_university_id=current_user.university_id,
+            current_dormitory_id=current_user.dormitory_id,
+        )
+
+    def create_task_review(self, task_id: int, current_user: CurrentUserContext, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.repository.create_task_review(task_id, user_id=current_user.id, payload=payload)
 
     def list_notifications(self, current_user: CurrentUserContext, status: str, limit: int, offset: int) -> dict[str, Any]:
         return self.repository.list_notifications(

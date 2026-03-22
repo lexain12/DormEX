@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Clock, MessageSquare, Send, Star } from "lucide-react";
 import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
@@ -22,7 +22,7 @@ import {
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType } from "@/api/types";
 
-type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | null;
+type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | "review" | null;
 
 const OFFER_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидает",
@@ -40,10 +40,12 @@ function getOfferStatusClass(status: string) {
 const TaskDetail = () => {
   const queryClient = useQueryClient();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [createOpen, setCreateOpen] = useState(false);
   const [actionModal, setActionModal] = useState<ActionModal>(null);
   const [selectedOfferForCounter, setSelectedOfferForCounter] = useState<number | null>(null);
+  const [hasHandledAutoPanel, setHasHandledAutoPanel] = useState(false);
 
   const [serviceTitle, setServiceTitle] = useState("");
   const [serviceDescription, setServiceDescription] = useState("");
@@ -62,6 +64,8 @@ const TaskDetail = () => {
   const [editOfferBarterDescription, setEditOfferBarterDescription] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [disputeComment, setDisputeComment] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
 
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
@@ -70,6 +74,7 @@ const TaskDetail = () => {
   const [editOfferError, setEditOfferError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [disputeError, setDisputeError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const numericTaskId = Number(id);
   const hasValidTaskId = Number.isFinite(numericTaskId);
@@ -409,6 +414,31 @@ const TaskDetail = () => {
     },
   });
 
+  const createReviewMutation = useMutation({
+    mutationFn: (payload: { rating: number; comment: string | null }) => tasksService.createReview(numericTaskId, payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskReviews(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.userProfile(user?.id ?? 0) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.userReviews(user?.id ?? 0) }),
+        queryClient.invalidateQueries({ queryKey: ["user"] }),
+        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+      toast({
+        title: "Отзыв отправлен",
+        description: "Спасибо, сделка отмечена в вашей истории.",
+      });
+      setReviewComment("");
+      setReviewRating(5);
+      setReviewError(null);
+      setActionModal(null);
+    },
+    onError: (error) => {
+      setReviewError(error instanceof Error ? error.message : "Не удалось отправить отзыв");
+    },
+  });
+
   const closeActionModal = () => {
     setActionModal(null);
     setServiceError(null);
@@ -418,6 +448,7 @@ const TaskDetail = () => {
     setEditOfferError(null);
     setCancelError(null);
     setDisputeError(null);
+    setReviewError(null);
   };
 
   const handleServiceSubmit = async (event: FormEvent) => {
@@ -614,6 +645,21 @@ const TaskDetail = () => {
     await openDisputeMutation.mutateAsync(normalizedComment);
   };
 
+  const handleReviewSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!taskQuery.data?.review_summary?.can_leave_review) {
+      setReviewError("Сейчас отзыв по этой сделке оставить нельзя.");
+      return;
+    }
+
+    setReviewError(null);
+    await createReviewMutation.mutateAsync({
+      rating: reviewRating,
+      comment: reviewComment.trim() || null,
+    });
+  };
+
   const urgencyClass = !task ? "chip-inactive" :
     task.urgency === "urgent" ? "urgency-urgent" :
       task.urgency === "today" ? "urgency-today" :
@@ -633,6 +679,137 @@ const TaskDetail = () => {
   const completionStatus = taskQuery.data?.completion_confirmation_status ?? null;
   const completionConfirmedByMe = Boolean(taskQuery.data?.completion_confirmed_by_me);
   const isAwaitingOtherPartyConfirmation = task?.status === "progress" && completionConfirmedByMe && completionStatus !== "completed";
+  const reviewSummary = taskQuery.data?.review_summary ?? null;
+  const ownPendingOffer = offersQuery.data?.find((offer) => offer.performer?.id === user?.id && offer.status === "pending") ?? null;
+  const autoPanel = searchParams.get("panel");
+  const requesterProfileHref = isTaskOwner
+    ? "/profile"
+    : taskQuery.data?.customer?.id
+      ? `/users/${taskQuery.data.customer.id}`
+      : null;
+
+  useEffect(() => {
+    setHasHandledAutoPanel(false);
+  }, [numericTaskId]);
+
+  useEffect(() => {
+    if (hasHandledAutoPanel) {
+      return;
+    }
+
+    if (autoPanel === "chat" && chatId) {
+      setActionModal("message");
+      setHasHandledAutoPanel(true);
+      return;
+    }
+
+    if (autoPanel === "review" && reviewSummary?.can_leave_review) {
+      setActionModal("review");
+      setHasHandledAutoPanel(true);
+      return;
+    }
+
+    if (!autoPanel) {
+      setHasHandledAutoPanel(true);
+    }
+  }, [autoPanel, chatId, hasHandledAutoPanel, reviewSummary?.can_leave_review]);
+
+  const roleStageSummary = useMemo(() => {
+    if (!task) {
+      return null;
+    }
+
+    if (task.status === "open") {
+      if (isTaskOwner) {
+        return {
+          title: "Ждём первые отклики",
+          description: "Как только кто-то предложит свои условия, здесь появится список кандидатов.",
+        };
+      }
+
+      return {
+        title: ownPendingOffer ? "Ваш отклик уже отправлен" : "Можно откликнуться",
+        description: ownPendingOffer
+          ? "Вы уже участвуете в выборе исполнителя. При необходимости отклик можно отредактировать или отозвать."
+          : "Выберите формат ответа: предложите услугу или сразу укажите цену.",
+      };
+    }
+
+    if (task.status === "offers") {
+      if (isTaskOwner) {
+        return {
+          title: "Есть кандидаты на задачу",
+          description: "Сравните отклики, откройте переговоры и выберите исполнителя, когда условия устроят.",
+        };
+      }
+
+      if (ownPendingOffer) {
+        return {
+          title: "Ожидаем решение заказчика",
+          description: "Заказчик уже видит ваш отклик. Если потребуется, он сможет открыть переговоры по условиям.",
+        };
+      }
+
+      return {
+        title: "Набор исполнителей ещё открыт",
+        description: "Вы всё ещё можете отправить отклик, пока заказчик не выбрал исполнителя.",
+      };
+    }
+
+    if (task.status === "progress") {
+      if (isTaskOwner) {
+        return {
+          title: completionConfirmedByMe ? "Ждём подтверждение исполнителя" : "Работа в процессе",
+          description: completionConfirmedByMe
+            ? "Вы уже подтвердили завершение со своей стороны. Когда исполнитель подтвердит результат, сделка закроется."
+            : "Поддерживайте связь в чате и подтвердите выполнение, когда всё будет готово.",
+        };
+      }
+
+      if (isAssignedPerformer) {
+        return {
+          title: completionConfirmedByMe ? "Ждём подтверждение заказчика" : "Задача у вас в работе",
+          description: completionConfirmedByMe
+            ? "Вы уже сообщили о завершении. Теперь нужно дождаться подтверждения заказчика."
+            : "Когда работа будет готова, можно запросить закрытие сделки и подтвердить выполнение.",
+        };
+      }
+
+      return {
+        title: "Задача уже в работе",
+        description: "Исполнитель выбран, поэтому новые отклики больше не принимаются.",
+      };
+    }
+
+    if (task.status === "done") {
+      if (reviewSummary?.pending_by_me) {
+        return {
+          title: "Сделка завершена, отзыв ещё ждёт вас",
+          description: "Оставьте короткую оценку второй стороне, чтобы сделка полностью закрылась в истории.",
+        };
+      }
+
+      return {
+        title: "Сделка завершена",
+        description: reviewSummary?.counterpart_review
+          ? "По сделке уже есть отзыв второй стороны. История и оценка сохранены."
+          : "Все основные действия завершены. Если отзыв уже оставлен, он сохранён в истории профиля.",
+      };
+    }
+
+    return {
+      title: "Задача закрыта",
+      description: "По этой заявке больше нельзя отправлять новые действия.",
+    };
+  }, [
+    completionConfirmedByMe,
+    isAssignedPerformer,
+    isTaskOwner,
+    ownPendingOffer,
+    reviewSummary?.counterpart_review,
+    reviewSummary?.pending_by_me,
+    task,
+  ]);
 
   if (!hasValidTaskId) {
     return (
@@ -711,12 +888,28 @@ const TaskDetail = () => {
                   </div>
                 </div>
 
+                {roleStageSummary && (
+                  <div className="mt-5 rounded-lg border border-border bg-secondary/40 p-4">
+                    <div className="text-sm font-semibold text-foreground">{roleStageSummary.title}</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{roleStageSummary.description}</div>
+                  </div>
+                )}
+
                 <div className="mt-5 flex items-center gap-3 border-t border-border pt-5">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
                     {task.requesterAvatar}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-medium text-foreground">{task.requesterName}</div>
+                    {requesterProfileHref ? (
+                      <Link
+                        to={requesterProfileHref}
+                        className="text-sm font-medium text-foreground hover:text-primary transition-colors"
+                      >
+                        {task.requesterName}
+                      </Link>
+                    ) : (
+                      <div className="text-sm font-medium text-foreground">{task.requesterName}</div>
+                    )}
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="flex items-center gap-0.5">
                         <Star className="w-3 h-3 text-warning fill-warning" />
@@ -811,25 +1004,103 @@ const TaskDetail = () => {
                   </div>
                 )}
               </div>
+
+              {task.status === "done" && reviewSummary && reviewSummary.my_role && (
+                <div className="card-surface p-4 sm:p-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Отзывы по завершённой сделке</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        После закрытия сделки обе стороны могут оставить по одному отзыву друг о друге.
+                      </p>
+                    </div>
+
+                    {reviewSummary.can_leave_review && (
+                      <button
+                        type="button"
+                        onClick={() => setActionModal("review")}
+                        className="inline-flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                      >
+                        Оставить отзыв
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4">
+                      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Ваш отзыв</div>
+                      {reviewSummary.my_review ? (
+                        <>
+                          <div className="mt-2 flex items-center gap-1">
+                            {Array.from({ length: reviewSummary.my_review.rating }).map((_, index) => (
+                              <Star key={index} className="w-4 h-4 text-warning fill-warning" />
+                            ))}
+                          </div>
+                          <div className="mt-2 text-sm text-foreground">
+                            {reviewSummary.my_review.comment || "Без комментария"}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-2 text-sm text-muted-foreground">
+                          {reviewSummary.pending_by_me
+                            ? "Отзыв ещё не оставлен. Его можно добавить прямо с этой страницы."
+                            : "Отзыв с вашей стороны пока недоступен."}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4">
+                      <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Отзыв второй стороны</div>
+                      {reviewSummary.counterpart_review ? (
+                        <>
+                          <div className="mt-2 flex items-center gap-1">
+                            {Array.from({ length: reviewSummary.counterpart_review.rating }).map((_, index) => (
+                              <Star key={index} className="w-4 h-4 text-warning fill-warning" />
+                            ))}
+                          </div>
+                          <div className="mt-2 text-sm text-foreground">
+                            {reviewSummary.counterpart_review.comment || "Без комментария"}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-2 text-sm text-muted-foreground">
+                          {reviewSummary.pending_by_counterpart
+                            ? "Вторая сторона ещё не оставила отзыв."
+                            : "Отзыв второй стороны пока недоступен."}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="w-full shrink-0 space-y-4 xl:w-80">
               <div className="card-surface space-y-3 p-5 xl:sticky xl:top-20">
-                <button
-                  onClick={() => setActionModal("service")}
-                  disabled={!canRespond}
-                  className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <Send className="w-4 h-4" />
-                  Предложить услугу
-                </button>
-                <button
-                  onClick={() => setActionModal("price")}
-                  disabled={!canRespond}
-                  className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  Предложить цену
-                </button>
+                {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
+                  <>
+                    <button
+                      onClick={() => setActionModal("service")}
+                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Send className="w-4 h-4" />
+                      Предложить, как выполнить
+                    </button>
+                    <button
+                      onClick={() => setActionModal("price")}
+                      className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
+                    >
+                      Назвать свою цену
+                    </button>
+                  </>
+                )}
+
+                {ownPendingOffer && (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
+                    Ваш отклик уже отправлен. Заказчик увидит его в списке и сможет открыть переговоры по условиям.
+                  </div>
+                )}
+
                 <button
                   onClick={() => {
                     if (!chatId) {
@@ -845,7 +1116,7 @@ const TaskDetail = () => {
                   className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <MessageSquare className="w-4 h-4" />
-                  Написать
+                  Открыть чат
                 </button>
 
                 {isTaskOwner && task.status !== "cancelled" && task.status !== "done" && (
@@ -868,7 +1139,9 @@ const TaskDetail = () => {
                         ? "Отправляем..."
                         : isAwaitingOtherPartyConfirmation
                           ? "Ожидаем вторую сторону"
-                          : "Запросить завершение"}
+                          : isTaskOwner
+                            ? "Предложить закрыть сделку"
+                            : "Сообщить, что работа готова"}
                     </button>
                     <button
                       onClick={() => confirmCompletionMutation.mutate()}
@@ -879,7 +1152,9 @@ const TaskDetail = () => {
                         ? "Подтверждаем..."
                         : isAwaitingOtherPartyConfirmation
                           ? "Подтверждение отправлено"
-                          : "Подтвердить выполнение"}
+                          : isTaskOwner
+                            ? "Подтвердить, что всё выполнено"
+                            : "Подтвердить сдачу работы"}
                     </button>
                     <button
                       onClick={() => setActionModal("dispute-task")}
@@ -890,9 +1165,21 @@ const TaskDetail = () => {
                   </>
                 )}
 
+                {task.status === "done" && reviewSummary?.can_leave_review && (
+                  <button
+                    type="button"
+                    onClick={() => setActionModal("review")}
+                    className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+                  >
+                    Оставить отзыв по сделке
+                  </button>
+                )}
+
                 {isAwaitingOtherPartyConfirmation && (
                   <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    Вы уже подтвердили выполнение. Задача закроется, когда подтвердит вторая сторона.
+                    {isTaskOwner
+                      ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
+                      : "Вы уже сообщили о завершении работы. Сделка закроется после ответа заказчика."}
                   </div>
                 )}
 
@@ -941,9 +1228,18 @@ const TaskDetail = () => {
                       return (
                         <div key={offer.id} className="p-2.5 rounded-lg bg-secondary">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-xs font-medium text-foreground">
-                              {offer.performer?.full_name ?? "Исполнитель"}
-                            </div>
+                            {offer.performer?.id ? (
+                              <Link
+                                to={offer.performer.id === user?.id ? "/profile" : `/users/${offer.performer.id}`}
+                                className="text-xs font-medium text-foreground hover:text-primary transition-colors"
+                              >
+                                {offer.performer?.full_name ?? "Исполнитель"}
+                              </Link>
+                            ) : (
+                              <div className="text-xs font-medium text-foreground">
+                                {offer.performer?.full_name ?? "Исполнитель"}
+                              </div>
+                            )}
                             <span className={`chip text-[10px] px-1.5 py-0.5 ${getOfferStatusClass(offer.status)}`}>
                               {OFFER_STATUS_LABELS[offer.status] ?? offer.status}
                             </span>
@@ -985,21 +1281,12 @@ const TaskDetail = () => {
                           )}
 
                           {canCounterOffer && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedOfferForCounter(offer.id);
-                                setCounterMessage("");
-                                setCounterPaymentType("fixed_price");
-                                setCounterPriceValue(String(offer.price_amount ?? ""));
-                                setCounterBarterDescription(offer.barter_description ?? "");
-                                setCounterError(null);
-                                setActionModal("counter");
-                              }}
-                              className="mt-2 text-[11px] text-primary hover:text-primary/80"
+                            <Link
+                              to={`/task/${numericTaskId}/offers/${offer.id}/negotiation`}
+                              className="mt-2 inline-block text-[11px] text-primary hover:text-primary/80"
                             >
-                              Контрпредложение
-                            </button>
+                              Открыть переговоры
+                            </Link>
                           )}
 
                           {canChoosePerformer && offer.status === "pending" && (
@@ -1515,6 +1802,76 @@ const TaskDetail = () => {
               disabled={openDisputeMutation.isPending}
             >
               {openDisputeMutation.isPending ? "Отправляем..." : "Открыть спор"}
+            </button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={actionModal === "review"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Оставить отзыв по сделке</DialogTitle>
+            <DialogDescription>
+              Оценка обязательна, комментарий можно оставить по желанию.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleReviewSubmit}>
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Ваша оценка</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const value = index + 1;
+                  const active = value <= reviewRating;
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        setReviewRating(value);
+                        if (reviewError) {
+                          setReviewError(null);
+                        }
+                      }}
+                      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition-colors ${
+                        active
+                          ? "border-warning/40 bg-warning/10 text-warning"
+                          : "border-border bg-secondary text-muted-foreground hover:text-foreground"
+                      }`}
+                      aria-label={`Оценка ${value}`}
+                    >
+                      <Star className={`h-4 w-4 ${active ? "fill-warning" : ""}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">Комментарий</label>
+              <textarea
+                rows={4}
+                value={reviewComment}
+                onChange={(event) => {
+                  setReviewComment(event.target.value);
+                  if (reviewError) {
+                    setReviewError(null);
+                  }
+                }}
+                className="w-full px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Что было удобно, а что можно улучшить"
+              />
+            </div>
+
+            {reviewError && <p className="text-xs text-destructive">{reviewError}</p>}
+
+            <button
+              type="submit"
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              disabled={createReviewMutation.isPending}
+            >
+              {createReviewMutation.isPending ? "Отправляем..." : "Отправить отзыв"}
             </button>
           </form>
         </DialogContent>
