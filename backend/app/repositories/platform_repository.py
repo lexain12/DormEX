@@ -3122,6 +3122,16 @@ class PlatformRepository:
             agreed_price_amount = offer["task_price_amount"]
             agreed_barter_description = offer["task_barter_description"]
 
+            # Older barter offers could be saved as negotiable with the actual
+            # exchange item described in the message body. Preserve that so the
+            # customer can accept the offer immediately without losing meaning.
+            if agreed_payment_type == "barter":
+                agreed_barter_description = (
+                    offer.get("barter_description")
+                    or offer.get("message")
+                    or agreed_barter_description
+                )
+
         if agreed_payment_type == "fixed_price":
             if agreed_price_amount is None or agreed_price_amount <= 0:
                 raise DomainValidationError("Для fixed_price требуется положительная цена")

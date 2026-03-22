@@ -1,6 +1,6 @@
 import { Clock, TrendingUp, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { CATEGORIES, type Task } from '@/lib/data';
+import { CATEGORIES, getTaskCompensationLabel, type Task } from '@/lib/data';
 
 interface RightSidebarProps {
   tasks: Task[];
@@ -53,7 +53,7 @@ export function RightSidebar({ tasks }: RightSidebarProps) {
                 <div className="mb-1 text-sm font-medium leading-snug text-foreground">{task.title}</div>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-foreground">
-                    {task.price ? `${task.price} ₽` : 'Предложите'}
+                    {getTaskCompensationLabel(task)}
                   </span>
                   <span className="text-[11px] text-muted-foreground">{task.createdAt}</span>
                 </div>
