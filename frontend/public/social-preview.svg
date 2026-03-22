@@ -1,0 +1,42 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="140" y1="70" x2="1080" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220" />
+      <stop offset="0.55" stop-color="#142845" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+    <radialGradient id="glowLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(220 490) rotate(11) scale(320 180)">
+      <stop stop-color="#60A5FA" stop-opacity="0.42" />
+      <stop offset="1" stop-color="#60A5FA" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(980 120) rotate(180) scale(340 180)">
+      <stop stop-color="#93C5FD" stop-opacity="0.28" />
+      <stop offset="1" stop-color="#93C5FD" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="badge" x1="0" y1="0" x2="92" y2="92" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#60A5FA" />
+      <stop offset="1" stop-color="#2563EB" />
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" rx="36" fill="url(#bg)" />
+  <rect x="36" y="36" width="1128" height="558" rx="30" stroke="rgba(255,255,255,0.12)" />
+  <ellipse cx="220" cy="490" rx="320" ry="180" fill="url(#glowLeft)" />
+  <ellipse cx="980" cy="120" rx="340" ry="180" fill="url(#glowRight)" />
+
+  <rect x="88" y="88" width="92" height="92" rx="28" fill="url(#badge)" />
+  <path d="M117 134C117 121.297 127.297 111 140 111H151C157.627 111 163 116.373 163 123C163 129.627 157.627 135 151 135H141V157C141 163.627 135.627 169 129 169C122.373 169 117 163.627 117 157V134Z" fill="white" />
+
+  <text x="210" y="153" fill="white" font-size="62" font-weight="700" font-family="Inter, Arial, sans-serif">DormEX</text>
+  <text x="90" y="270" fill="white" font-size="78" font-weight="700" font-family="Inter, Arial, sans-serif">Помощь рядом,</text>
+  <text x="90" y="352" fill="#D8EAFE" font-size="78" font-weight="700" font-family="Inter, Arial, sans-serif">обмен внутри кампуса</text>
+  <text x="90" y="428" fill="#C4D4EC" font-size="30" font-weight="500" font-family="Inter, Arial, sans-serif">Сервис взаимопомощи и обмена услугами для студентов, общежитий и университетской среды.</text>
+
+  <rect x="90" y="482" width="290" height="58" rx="18" fill="rgba(255,255,255,0.1)" />
+  <text x="122" y="520" fill="white" font-size="28" font-weight="600" font-family="Inter, Arial, sans-serif">yjhv-solutions.ru</text>
+
+  <rect x="806" y="402" width="276" height="120" rx="24" fill="rgba(11,18,32,0.34)" stroke="rgba(255,255,255,0.14)" />
+  <text x="838" y="448" fill="#D8EAFE" font-size="22" font-weight="600" font-family="Inter, Arial, sans-serif">DormEX</text>
+  <text x="838" y="485" fill="white" font-size="32" font-weight="700" font-family="Inter, Arial, sans-serif">Биржа услуг</text>
+  <text x="838" y="518" fill="#C4D4EC" font-size="22" font-weight="500" font-family="Inter, Arial, sans-serif">Задачи, отклики, чат</text>
+</svg>
