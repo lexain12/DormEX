@@ -1077,18 +1077,25 @@ const TaskDetail = () => {
                       const performerInitial = performerName.charAt(0).toUpperCase() || "И";
                       const isOwnPendingOffer = offer.performer?.id === user?.id && offer.status === "pending";
                       const canCounterOffer = offer.status === "pending" && (isTaskOwner || offer.performer?.id === user?.id);
+                      const serviceTitle = offer.payment_type === "negotiable"
+                        ? offer.message
+                          .split(" · ")
+                          .map((part) => part.trim())
+                          .find(Boolean) ?? null
+                        : null;
                       const paymentBadge = offer.payment_type === "fixed_price"
                         ? offer.price_amount !== null && offer.price_amount !== undefined
                           ? `${offer.price_amount} ₽`
                           : "Цена уточняется"
                         : offer.payment_type === "barter"
                           ? "Бартер"
-                          : "Договорная цена";
+                          : serviceTitle ?? "Услуга";
                       const paymentTypeLabel = offer.payment_type === "fixed_price"
                         ? "Фиксированная стоимость"
                         : offer.payment_type === "barter"
                           ? "Обмен или взаимная услуга"
-                          : "Цена обсуждается";
+                          : "Услуга";
+                      const offerSummaryTitle = offer.payment_type === "negotiable" ? "Услуга" : "Условия";
 
                       return (
                         <div
@@ -1147,7 +1154,7 @@ const TaskDetail = () => {
                             </div>
 
                             <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 lg:w-44">
-                              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Условия</div>
+                              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{offerSummaryTitle}</div>
                               <div className="mt-2 text-base font-semibold text-foreground">{paymentBadge}</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 {offer.status === "accepted"
