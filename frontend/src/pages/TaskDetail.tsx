@@ -19,7 +19,16 @@ import {
   PAYMENT_LABELS,
   STATUS_LABELS,
   URGENCY_LABELS,
+  getTaskCompensationLabel,
 } from "@/lib/data";
+import {
+  formatPaymentValue,
+  getExchangeDescription,
+  getOfferBadgeLabel,
+  getOfferSummaryTitle,
+  getOfferTypeLabel,
+  isBarterLikePayment,
+} from "@/lib/offer-presenters";
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 
@@ -92,6 +101,9 @@ const TaskDetail = () => {
   const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
   const fixedTaskPrice = taskQuery.data?.payment_type === "fixed_price" && typeof taskQuery.data?.price_amount === "number"
     ? taskQuery.data.price_amount
+    : null;
+  const taskBarterDescription = taskQuery.data?.payment_type === "barter"
+    ? taskQuery.data.barter_description?.trim() || null
     : null;
 
   const offersQuery = useQuery({
@@ -209,12 +221,17 @@ const TaskDetail = () => {
   }, [actionModal, canOpenChat, chatId]);
 
   const createOfferMutation = useMutation({
-    mutationFn: (payload: { message: string; payment_type: "fixed_price" | "negotiable"; price_amount: number | null }) => (
+    mutationFn: (payload: {
+      message: string;
+      payment_type: ApiPaymentType;
+      price_amount: number | null;
+      barter_description: string | null;
+    }) => (
       offersService.createForTask(numericTaskId, {
         message: payload.message,
         payment_type: payload.payment_type,
         price_amount: payload.price_amount,
-        barter_description: null,
+        barter_description: payload.barter_description,
       })
     ),
     onSuccess: async () => {
@@ -303,6 +320,46 @@ const TaskDetail = () => {
     onError: (error) => {
       toast({
         title: "Не удалось выбрать исполнителя",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const acceptCounterOfferAndChooseMutation = useMutation({
+    mutationFn: async (payload: { counterOfferId: number; offerId: number }) => {
+      let counterOfferAccepted = false;
+
+      try {
+        await offersService.acceptCounterOffer(payload.counterOfferId);
+        counterOfferAccepted = true;
+        return await offersService.accept(payload.offerId);
+      } catch (error) {
+        if (counterOfferAccepted) {
+          const message = error instanceof Error ? error.message : "Попробуйте ещё раз.";
+          throw new Error(`Условия уже обновлены, но выбрать исполнителя не удалось: ${message}`);
+        }
+
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      if (selectedOfferForCounter) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.counterOffers(selectedOfferForCounter) });
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.offers(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats }),
+      ]);
+      toast({
+        title: "Условия приняты",
+        description: "Исполнитель выбран, задача переведена в работу.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Не удалось согласиться одной кнопкой",
         description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
         variant: "destructive",
       });
@@ -504,12 +561,14 @@ const TaskDetail = () => {
     const payload = [normalizedTitle, serviceDescription.trim(), serviceEta ? `Срок: ${serviceEta}` : ""]
       .filter(Boolean)
       .join(" · ");
+    const shouldCreateBarterOffer = taskQuery.data?.payment_type === "barter";
 
     try {
       await createOfferMutation.mutateAsync({
         message: payload,
-        payment_type: "negotiable",
+        payment_type: shouldCreateBarterOffer ? "barter" : "negotiable",
         price_amount: null,
+        barter_description: shouldCreateBarterOffer ? payload : null,
       });
 
       toast({
@@ -556,6 +615,37 @@ const TaskDetail = () => {
       closeActionModal();
     } catch (error) {
       setPriceError(error instanceof Error ? error.message : "Не удалось отправить цену");
+    }
+  };
+
+  const handleAcceptTaskBarter = async () => {
+    if (!taskBarterDescription) {
+      toast({
+        title: "Не удалось принять обмен",
+        description: "В задаче не указаны barter-условия.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await createOfferMutation.mutateAsync({
+        message: "Готов выполнить задачу на предложенных условиях обмена.",
+        payment_type: "barter",
+        price_amount: null,
+        barter_description: taskBarterDescription,
+      });
+
+      toast({
+        title: "Отклик по barter-условиям отправлен",
+        description: "Заказчик увидит, что вы согласны на предложенный обмен.",
+      });
+    } catch (error) {
+      toast({
+        title: "Не удалось принять barter-условия",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -807,7 +897,9 @@ const TaskDetail = () => {
         title: ownPendingOffer ? "Ваш отклик уже отправлен" : "Можно откликнуться",
         description: ownPendingOffer
           ? "Вы уже участвуете в выборе исполнителя. При необходимости отклик можно отредактировать или отозвать."
-          : "Выберите формат ответа: предложите услугу или сразу укажите цену.",
+          : task?.paymentType === "exchange"
+            ? "Можно сразу согласиться на предложенный обмен или отправить свой вариант barter-условий."
+            : "Выберите формат ответа: предложите услугу или сразу укажите цену.",
       };
     }
 
@@ -828,7 +920,9 @@ const TaskDetail = () => {
 
       return {
         title: "Набор исполнителей ещё открыт",
-        description: "Вы всё ещё можете отправить отклик, пока заказчик не выбрал исполнителя.",
+        description: task?.paymentType === "exchange"
+          ? "Вы всё ещё можете согласиться на предложенный обмен или отправить свой barter-вариант, пока заказчик не выбрал исполнителя."
+          : "Вы всё ещё можете отправить отклик, пока заказчик не выбрал исполнителя.",
       };
     }
 
@@ -908,6 +1002,148 @@ const TaskDetail = () => {
     task,
   ]);
 
+  const taskActionsCard = task ? (
+    <div className="card-surface space-y-3 p-5">
+      {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
+        <>
+          {fixedTaskPrice !== null && (
+            <button
+              onClick={openTaskFixedPriceModal}
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+            >
+              Откликнуться за {fixedTaskPrice} ₽
+            </button>
+          )}
+          {taskBarterDescription && (
+            <button
+              onClick={() => void handleAcceptTaskBarter()}
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+              disabled={createOfferMutation.isPending}
+            >
+              {createOfferMutation.isPending ? "Отправляем..." : "Согласиться на обмен"}
+            </button>
+          )}
+          <button
+            onClick={() => setActionModal("service")}
+            className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+              fixedTaskPrice !== null || taskBarterDescription
+                ? "border border-border text-foreground hover:bg-accent"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
+            }`}
+          >
+            <Send className="w-4 h-4" />
+            {taskBarterDescription ? "Предложить свой вариант обмена" : "Предложить, как выполнить"}
+          </button>
+          <button
+            onClick={openCustomPriceModal}
+            className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
+          >
+            Назвать свою цену
+          </button>
+        </>
+      )}
+
+      {ownPendingOffer && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
+          Ваш отклик уже отправлен. Заказчик увидит его в списке и сможет открыть переговоры по условиям.
+        </div>
+      )}
+
+      <button
+        onClick={() => {
+          if (!chatId) {
+            toast({
+              title: "Чат недоступен",
+              description: "Чат появляется после выбора исполнителя.",
+            });
+            return;
+          }
+          if (!isChatParticipant) {
+            toast({
+              title: "Чат недоступен",
+              description: "Чат доступен только заказчику и выбранному исполнителю.",
+            });
+            return;
+          }
+          setActionModal("message");
+        }}
+        disabled={!canOpenChat}
+        className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        <MessageSquare className="w-4 h-4" />
+        Открыть чат
+      </button>
+
+      {isTaskOwner && task.status !== "cancelled" && task.status !== "done" && (
+        <button
+          onClick={() => setActionModal("cancel-task")}
+          className="w-full h-11 rounded-lg border border-destructive/40 text-destructive font-medium text-sm hover:bg-destructive/5 transition-colors"
+        >
+          Отменить задачу
+        </button>
+      )}
+
+      {canManageProgress && (
+        <button
+          onClick={() => confirmCompletionMutation.mutate()}
+          className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+          disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
+        >
+          {confirmCompletionMutation.isPending
+            ? "Подтверждаем..."
+            : isAwaitingOtherPartyConfirmation
+              ? "Подтверждение отправлено"
+              : hasCounterpartConfirmed
+                ? "Подтвердить и закрыть сделку"
+                : hasOpenDispute
+                  ? "Спор уже открыт"
+                  : isTaskOwner
+                    ? "Подтвердить, что всё выполнено"
+                    : "Подтвердить сдачу работы"}
+        </button>
+      )}
+
+      {task.status === "done" && reviewSummary?.can_leave_review && (
+        <button
+          type="button"
+          onClick={() => setActionModal("review")}
+          className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+        >
+          Оставить отзыв по сделке
+        </button>
+      )}
+
+      {isAwaitingOtherPartyConfirmation && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          {isTaskOwner
+            ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
+            : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
+        </div>
+      )}
+
+      {hasCounterpartConfirmed && !completionConfirmedByMe && !hasOpenDispute && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          {isTaskOwner
+            ? "Исполнитель уже подтвердил выполнение. Если результат вас устраивает, подтвердите сделку и она сразу закроется."
+            : "Заказчик уже подтвердил выполнение. Подтвердите сдачу работы, чтобы закрыть сделку."}
+        </div>
+      )}
+
+      {hasOpenDispute && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          По задаче открыт спор. До его урегулирования подтверждение завершения недоступно.
+        </div>
+      )}
+
+      <div className="pt-3 border-t border-border">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Clock className="w-3.5 h-3.5" />
+          Создано {task.createdAt}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!hasValidTaskId) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6">
@@ -976,8 +1212,10 @@ const TaskDetail = () => {
                     <div className="text-sm font-medium text-foreground">{PAYMENT_LABELS[task.paymentType]}</div>
                   </div>
                   <div>
-                    <div className="text-[11px] text-muted-foreground mb-0.5">Цена</div>
-                    <div className="text-sm font-semibold text-foreground">{task.price ? `${task.price} ₽` : "По договорённости"}</div>
+                    <div className="text-[11px] text-muted-foreground mb-0.5">
+                      {task.paymentType === "exchange" ? "Бартер" : "Цена"}
+                    </div>
+                    <div className="text-sm font-semibold text-foreground">{getTaskCompensationLabel(task)}</div>
                   </div>
                   <div>
                     <div className="text-[11px] text-muted-foreground mb-0.5">Предложения</div>
@@ -1016,6 +1254,10 @@ const TaskDetail = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="xl:hidden">
+                {taskActionsCard}
               </div>
 
               <div className="card-surface p-4 sm:p-6">
@@ -1077,25 +1319,17 @@ const TaskDetail = () => {
                       const performerInitial = performerName.charAt(0).toUpperCase() || "И";
                       const isOwnPendingOffer = offer.performer?.id === user?.id && offer.status === "pending";
                       const canCounterOffer = offer.status === "pending" && (isTaskOwner || offer.performer?.id === user?.id);
-                      const serviceTitle = offer.payment_type === "negotiable"
-                        ? offer.message
-                          .split(" · ")
-                          .map((part) => part.trim())
-                          .find(Boolean) ?? null
-                        : null;
-                      const paymentBadge = offer.payment_type === "fixed_price"
-                        ? offer.price_amount !== null && offer.price_amount !== undefined
-                          ? `${offer.price_amount} ₽`
-                          : "Цена уточняется"
-                        : offer.payment_type === "barter"
-                          ? "Бартер"
-                          : serviceTitle ?? "Услуга";
-                      const paymentTypeLabel = offer.payment_type === "fixed_price"
-                        ? "Фиксированная стоимость"
-                        : offer.payment_type === "barter"
-                          ? "Обмен или взаимная услуга"
-                          : "Услуга";
-                      const offerSummaryTitle = offer.payment_type === "negotiable" ? "Услуга" : "Условия";
+                      const paymentBadge = getOfferBadgeLabel(offer, taskQuery.data.payment_type);
+                      const paymentTypeLabel = getOfferTypeLabel(offer.payment_type, taskQuery.data.payment_type);
+                      const offerSummaryTitle = getOfferSummaryTitle(offer.payment_type, taskQuery.data.payment_type);
+                      const exchangeDescription = getExchangeDescription(offer, taskQuery.data.payment_type);
+                      const acceptOfferLabel = isBarterLikePayment(offer.payment_type, taskQuery.data.payment_type)
+                        ? "Согласиться на обмен"
+                        : "Выбрать исполнителя";
+                      const shouldShowExchangeDescription = Boolean(
+                        exchangeDescription
+                        && exchangeDescription !== (offer.message ?? "").trim(),
+                      );
 
                       return (
                         <div
@@ -1135,9 +1369,9 @@ const TaskDetail = () => {
                                 {offer.message || "Исполнитель готов обсудить детали по задаче."}
                               </div>
 
-                              {offer.payment_type === "barter" && offer.barter_description && (
+                              {shouldShowExchangeDescription && (
                                 <div className="mt-3 rounded-xl border border-border/70 bg-background/90 p-3 text-sm text-muted-foreground">
-                                  Условия обмена: <span className="text-foreground">{offer.barter_description}</span>
+                                  Что предлагает взамен: <span className="text-foreground">{exchangeDescription}</span>
                                 </div>
                               )}
 
@@ -1145,7 +1379,7 @@ const TaskDetail = () => {
                                 <span className="rounded-full border border-border bg-background px-3 py-1.5 text-muted-foreground">
                                   {paymentTypeLabel}
                                 </span>
-                                {offer.payment_type === "fixed_price" && (
+                                {(offer.payment_type === "fixed_price" || exchangeDescription) && (
                                   <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-foreground">
                                     {paymentBadge}
                                   </span>
@@ -1172,9 +1406,9 @@ const TaskDetail = () => {
                             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
                               {isOwnPendingOffer && (
                                 <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
+                                <button
+                                  type="button"
+                                  onClick={() => {
                                       setEditingOfferId(offer.id);
                                       setEditOfferMessage(offer.message ?? "");
                                       setEditOfferPaymentType(offer.payment_type);
@@ -1183,14 +1417,14 @@ const TaskDetail = () => {
                                       setEditOfferError(null);
                                       setActionModal("edit-offer");
                                     }}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                   >
                                     Редактировать
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => withdrawOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                     disabled={withdrawOfferMutation.isPending}
                                   >
                                     Отозвать отклик
@@ -1201,7 +1435,7 @@ const TaskDetail = () => {
                               {canCounterOffer && (
                                 <Link
                                   to={`/task/${numericTaskId}/offers/${offer.id}/negotiation`}
-                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                  className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                 >
                                   Открыть переговоры
                                 </Link>
@@ -1212,15 +1446,15 @@ const TaskDetail = () => {
                                   <button
                                     type="button"
                                     onClick={() => acceptOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto sm:text-sm"
                                     disabled={acceptOfferMutation.isPending}
                                   >
-                                    Выбрать исполнителя
+                                    {acceptOfferLabel}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => rejectOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:w-auto sm:text-sm"
                                     disabled={rejectOfferMutation.isPending}
                                   >
                                     Отклонить
@@ -1307,137 +1541,8 @@ const TaskDetail = () => {
             </div>
 
             <div className="w-full shrink-0 space-y-4 xl:sticky xl:top-20 xl:w-80 xl:self-start">
-              <div className="card-surface space-y-3 p-5">
-                {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
-                  <>
-                    {fixedTaskPrice !== null && (
-                      <button
-                        onClick={openTaskFixedPriceModal}
-                        className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      >
-                        Откликнуться за {fixedTaskPrice} ₽
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActionModal("service")}
-                      className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
-                        fixedTaskPrice !== null
-                          ? "border border-border text-foreground hover:bg-accent"
-                          : "bg-primary text-primary-foreground hover:bg-primary/90"
-                      }`}
-                    >
-                      <Send className="w-4 h-4" />
-                      Предложить, как выполнить
-                    </button>
-                    <button
-                      onClick={openCustomPriceModal}
-                      className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                    >
-                      Назвать свою цену
-                    </button>
-                  </>
-                )}
-
-                {ownPendingOffer && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
-                    Ваш отклик уже отправлен. Заказчик увидит его в списке и сможет открыть переговоры по условиям.
-                  </div>
-                )}
-
-                <button
-                  onClick={() => {
-                    if (!chatId) {
-                      toast({
-                        title: "Чат недоступен",
-                        description: "Чат появляется после выбора исполнителя.",
-                      });
-                      return;
-                    }
-                    if (!isChatParticipant) {
-                      toast({
-                        title: "Чат недоступен",
-                        description: "Чат доступен только заказчику и выбранному исполнителю.",
-                      });
-                      return;
-                    }
-                    setActionModal("message");
-                  }}
-                  disabled={!canOpenChat}
-                  className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Открыть чат
-                </button>
-
-                {isTaskOwner && task.status !== "cancelled" && task.status !== "done" && (
-                  <button
-                    onClick={() => setActionModal("cancel-task")}
-                    className="w-full h-11 rounded-lg border border-destructive/40 text-destructive font-medium text-sm hover:bg-destructive/5 transition-colors"
-                  >
-                    Отменить задачу
-                  </button>
-                )}
-
-                {canManageProgress && (
-                  <>
-                    <button
-                      onClick={() => confirmCompletionMutation.mutate()}
-                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
-                    >
-                      {confirmCompletionMutation.isPending
-                        ? "Подтверждаем..."
-                        : isAwaitingOtherPartyConfirmation
-                          ? "Подтверждение отправлено"
-                          : hasCounterpartConfirmed
-                            ? "Подтвердить и закрыть сделку"
-                            : hasOpenDispute
-                              ? "Спор уже открыт"
-                          : isTaskOwner
-                            ? "Подтвердить, что всё выполнено"
-                            : "Подтвердить сдачу работы"}
-                    </button>
-                  </>
-                )}
-
-                {task.status === "done" && reviewSummary?.can_leave_review && (
-                  <button
-                    type="button"
-                    onClick={() => setActionModal("review")}
-                    className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                  >
-                    Оставить отзыв по сделке
-                  </button>
-                )}
-
-                {isAwaitingOtherPartyConfirmation && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    {isTaskOwner
-                      ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
-                      : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
-                  </div>
-                )}
-
-                {hasCounterpartConfirmed && !completionConfirmedByMe && !hasOpenDispute && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    {isTaskOwner
-                      ? "Исполнитель уже подтвердил выполнение. Если результат вас устраивает, подтвердите сделку и она сразу закроется."
-                      : "Заказчик уже подтвердил выполнение. Подтвердите сдачу работы, чтобы закрыть сделку."}
-                  </div>
-                )}
-
-                {hasOpenDispute && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    По задаче открыт спор. До его урегулирования подтверждение завершения недоступно.
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-border">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="w-3.5 h-3.5" />
-                    Создано {task.createdAt}
-                  </div>
-                </div>
+              <div className="hidden xl:block">
+                {taskActionsCard}
               </div>
 
               <div className="card-surface p-4">
@@ -1698,17 +1803,30 @@ const TaskDetail = () => {
                     <div className="text-xs text-muted-foreground mt-1">
                       {counter.payment_type === "fixed_price"
                         ? `${counter.price_amount ?? "—"} ₽`
-                        : counter.payment_type === "barter"
-                          ? `Бартер: ${counter.barter_description ?? "без описания"}`
+                        : getExchangeDescription(counter, taskQuery.data?.payment_type)
+                          ? `Бартер: ${getExchangeDescription(counter, taskQuery.data?.payment_type)}`
                           : "Договорная"}
                     </div>
                     {isPendingForAction && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {isTaskOwner && selectedOfferForCounter && (
+                          <button
+                            type="button"
+                            onClick={() => acceptCounterOfferAndChooseMutation.mutate({
+                              counterOfferId: counter.id,
+                              offerId: selectedOfferForCounter,
+                            })}
+                            className="text-[11px] text-primary hover:text-primary/80"
+                            disabled={acceptCounterOfferAndChooseMutation.isPending}
+                          >
+                            {acceptCounterOfferAndChooseMutation.isPending ? "Соглашаемся..." : "Принять и выбрать"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => acceptCounterOfferMutation.mutate(counter.id)}
                           className="text-[11px] text-primary hover:text-primary/80"
-                          disabled={acceptCounterOfferMutation.isPending}
+                          disabled={acceptCounterOfferMutation.isPending || acceptCounterOfferAndChooseMutation.isPending}
                         >
                           Принять
                         </button>
@@ -1716,7 +1834,7 @@ const TaskDetail = () => {
                           type="button"
                           onClick={() => rejectCounterOfferMutation.mutate(counter.id)}
                           className="text-[11px] text-muted-foreground hover:text-foreground"
-                          disabled={rejectCounterOfferMutation.isPending}
+                          disabled={rejectCounterOfferMutation.isPending || acceptCounterOfferAndChooseMutation.isPending}
                         >
                           Отклонить
                         </button>

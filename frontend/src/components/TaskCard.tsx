@@ -1,6 +1,6 @@
 import { Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Task, STATUS_LABELS, URGENCY_LABELS, PAYMENT_LABELS } from '@/lib/data';
+import { Task, STATUS_LABELS, URGENCY_LABELS, PAYMENT_LABELS, getTaskCompensationLabel } from '@/lib/data';
 
 interface TaskCardProps {
   task: Task;
@@ -55,7 +55,7 @@ export function TaskCard({ task }: TaskCardProps) {
       {/* Price row */}
       <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-lg font-semibold text-foreground">
-          {task.price ? `${task.price} ₽` : 'Предложите цену'}
+          {getTaskCompensationLabel(task)}
         </div>
         {task.offersCount > 0 && (
           <span className="text-xs text-muted-foreground">

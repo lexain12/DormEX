@@ -13,12 +13,25 @@ export interface Task {
   urgency: Urgency;
   paymentType: PaymentType;
   price?: number;
+  barterDescription?: string | null;
   offersCount: number;
   requesterName: string;
   requesterRating: number;
   requesterCompletedTasksCount?: number;
   requesterAvatar: string;
   createdAt: string;
+}
+
+export function getTaskCompensationLabel(task: Pick<Task, "paymentType" | "price" | "barterDescription">): string {
+  if (task.paymentType === "money") {
+    return typeof task.price === "number" ? `${task.price} ₽` : "Цена уточняется";
+  }
+
+  if (task.paymentType === "exchange") {
+    return task.barterDescription?.trim() || "Услуга взамен";
+  }
+
+  return "По договорённости";
 }
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {

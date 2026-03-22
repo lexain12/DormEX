@@ -115,6 +115,7 @@ export function mapTaskDtoToUi(task: TaskListItemDto | TaskDetailDto): Task {
     urgency: mapApiUrgencyToUi(task.urgency),
     paymentType: mapApiPaymentToUi(task.payment_type),
     price: task.price_amount ?? undefined,
+    barterDescription: task.barter_description ?? null,
     offersCount: task.offers_count ?? 0,
     requesterName,
     requesterRating: Number(task.customer?.rating_avg ?? 0),

@@ -1,6 +1,6 @@
 import { Star, ArrowRight, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { type Task } from '@/lib/data';
+import { getTaskCompensationLabel, type Task } from '@/lib/data';
 
 interface FeaturedCardProps {
   task: Task;
@@ -40,7 +40,7 @@ export function FeaturedCard({ task }: FeaturedCardProps) {
           </p>
         </div>
         <div className="shrink-0 sm:ml-6 sm:text-right">
-          <div className="text-2xl font-bold text-foreground">{task.price ? `${task.price} ₽` : 'Договорная'}</div>
+          <div className="text-2xl font-bold text-foreground">{getTaskCompensationLabel(task)}</div>
           <div className="text-xs text-muted-foreground mt-1">{task.offersCount} предложения</div>
         </div>
       </div>

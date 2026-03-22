@@ -92,3 +92,10 @@ databaseChangeLog:
         - sqlFile:
             path: sql/006_reset_seed_data.sql
             relativeToChangelogFile: true
+  - changeSet:
+      id: 007-allow-negotiable-task-assignments
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/007_allow_negotiable_task_assignments.sql
+            relativeToChangelogFile: true

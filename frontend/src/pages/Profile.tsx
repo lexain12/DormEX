@@ -69,6 +69,7 @@ function mapTaskToCard(
     urgency: mapApiUrgencyToUi(task.urgency ?? "flexible"),
     paymentType: mapApiPaymentToUi(task.payment_type ?? "negotiable"),
     price: typeof task.price_amount === "number" ? task.price_amount : undefined,
+    barterDescription: task.barter_description ?? null,
     offersCount: Number(task.offers_count ?? 0),
     requesterName,
     requesterRating,

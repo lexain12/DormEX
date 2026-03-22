@@ -13,6 +13,12 @@ import { useAuth } from "@/context/auth-context";
 import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { toast } from "@/hooks/use-toast";
 import { PAYMENT_LABELS, STATUS_LABELS } from "@/lib/data";
+import {
+  formatPaymentValue,
+  getExchangeDescription,
+  getOfferTypeLabel,
+  isBarterLikePayment,
+} from "@/lib/offer-presenters";
 
 const DEMO_POLL_INTERVAL_MS = 3_000;
 
@@ -138,6 +144,15 @@ export default function OfferNegotiation() {
   const actionableCounterOffer = latestCounterOffer?.status === "pending" && latestCounterOffer.author_user_id !== user?.id
     ? latestCounterOffer
     : null;
+  const canChoosePerformer = Boolean(isTaskOwner && offer?.status === "pending");
+  const canAcceptOfferInOneStep = Boolean(canChoosePerformer && actionableCounterOffer);
+  const directAcceptLabel = offer && isBarterLikePayment(offer.payment_type, taskQuery.data?.payment_type)
+    ? "Согласиться на обмен"
+    : "Выбрать исполнителя";
+  const acceptCounterAndChooseLabel = actionableCounterOffer
+    && isBarterLikePayment(actionableCounterOffer.payment_type, taskQuery.data?.payment_type)
+    ? "Согласиться на обмен и выбрать исполнителя"
+    : "Принять условия и выбрать исполнителя";
 
   const createCounterOfferMutation = useMutation({
     mutationFn: (payload: {
@@ -182,6 +197,69 @@ export default function OfferNegotiation() {
     onError: (error) => {
       toast({
         title: "Не удалось принять условия",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const acceptOfferMutation = useMutation({
+    mutationFn: offersService.accept,
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.counterOffers(numericOfferId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.offers(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats }),
+        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+      toast({
+        title: "Исполнитель выбран",
+        description: "Задача переведена в работу.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Не удалось выбрать исполнителя",
+        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const acceptCounterOfferAndChooseMutation = useMutation({
+    mutationFn: async (payload: { counterOfferId: number; offerId: number }) => {
+      let counterOfferAccepted = false;
+
+      try {
+        await offersService.acceptCounterOffer(payload.counterOfferId);
+        counterOfferAccepted = true;
+        return await offersService.accept(payload.offerId);
+      } catch (error) {
+        if (counterOfferAccepted) {
+          const message = error instanceof Error ? error.message : "Попробуйте ещё раз.";
+          throw new Error(`Условия уже обновлены, но выбрать исполнителя не удалось: ${message}`);
+        }
+
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.counterOffers(numericOfferId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.offers(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.chats }),
+        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+      ]);
+      toast({
+        title: "Условия приняты",
+        description: "Исполнитель выбран, задача переведена в работу.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Не удалось согласиться одной кнопкой",
         description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
         variant: "destructive",
       });
@@ -331,15 +409,17 @@ export default function OfferNegotiation() {
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <div className="text-[11px] text-muted-foreground mb-1">Тип оплаты</div>
-                        <div className="text-sm font-medium text-foreground">{PAYMENT_LABELS[offer.payment_type === "fixed_price" ? "money" : offer.payment_type === "barter" ? "exchange" : "offers"]}</div>
+                        <div className="text-sm font-medium text-foreground">
+                          {PAYMENT_LABELS[offer.payment_type === "fixed_price" ? "money" : offer.payment_type === "barter" ? "exchange" : "offers"]}
+                        </div>
                       </div>
                       <div>
                         <div className="text-[11px] text-muted-foreground mb-1">Сумма</div>
-                        <div className="text-sm font-medium text-foreground">{offer.price_amount ? `${offer.price_amount} ₽` : "По договорённости"}</div>
+                        <div className="text-sm font-medium text-foreground">{formatPaymentValue(offer.payment_type, offer.price_amount)}</div>
                       </div>
                       <div>
-                        <div className="text-[11px] text-muted-foreground mb-1">Бартер</div>
-                        <div className="text-sm font-medium text-foreground">{offer.barter_description || "Нет"}</div>
+                        <div className="text-[11px] text-muted-foreground mb-1">Обмен</div>
+                        <div className="text-sm font-medium text-foreground">{getExchangeDescription(offer, taskQuery.data.payment_type) || "Нет"}</div>
                       </div>
                     </div>
                   </div>
@@ -420,22 +500,18 @@ export default function OfferNegotiation() {
                             <div>
                               <div className="text-[11px] text-muted-foreground mb-1">Тип оплаты</div>
                               <div className="text-sm font-medium text-foreground">
-                                {counterOffer.payment_type === "fixed_price"
-                                  ? "Фиксированная цена"
-                                  : counterOffer.payment_type === "barter"
-                                    ? "Бартер"
-                                    : "Договорная"}
+                                {getOfferTypeLabel(counterOffer.payment_type, taskQuery.data.payment_type)}
                               </div>
                             </div>
                             <div>
                               <div className="text-[11px] text-muted-foreground mb-1">Сумма</div>
                               <div className="text-sm font-medium text-foreground">
-                                {counterOffer.price_amount ? `${counterOffer.price_amount} ₽` : "По договорённости"}
+                                {formatPaymentValue(counterOffer.payment_type, counterOffer.price_amount)}
                               </div>
                             </div>
                             <div>
-                              <div className="text-[11px] text-muted-foreground mb-1">Бартер</div>
-                              <div className="text-sm font-medium text-foreground">{counterOffer.barter_description || "Нет"}</div>
+                              <div className="text-[11px] text-muted-foreground mb-1">Обмен</div>
+                              <div className="text-sm font-medium text-foreground">{getExchangeDescription(counterOffer, taskQuery.data.payment_type) || "Нет"}</div>
                             </div>
                           </div>
                         </div>
@@ -462,23 +538,47 @@ export default function OfferNegotiation() {
                 <div className="mt-4 space-y-2">
                   {actionableCounterOffer && (
                     <>
+                      {canAcceptOfferInOneStep && (
+                        <button
+                          type="button"
+                          onClick={() => acceptCounterOfferAndChooseMutation.mutate({
+                            counterOfferId: actionableCounterOffer.id,
+                            offerId: numericOfferId,
+                          })}
+                          className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                          disabled={acceptCounterOfferAndChooseMutation.isPending}
+                        >
+                          {acceptCounterOfferAndChooseMutation.isPending ? "Соглашаемся..." : acceptCounterAndChooseLabel}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => acceptCounterOfferMutation.mutate(actionableCounterOffer.id)}
-                        className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-                        disabled={acceptCounterOfferMutation.isPending}
+                        className="w-full h-11 rounded-lg border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
+                        disabled={acceptCounterOfferMutation.isPending || acceptCounterOfferAndChooseMutation.isPending}
                       >
-                        {acceptCounterOfferMutation.isPending ? "Подтверждаем..." : "Принять условия"}
+                        {acceptCounterOfferMutation.isPending ? "Подтверждаем..." : "Только принять условия"}
                       </button>
                       <button
                         type="button"
                         onClick={() => rejectCounterOfferMutation.mutate(actionableCounterOffer.id)}
                         className="w-full h-11 rounded-lg border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
-                        disabled={rejectCounterOfferMutation.isPending}
+                        disabled={rejectCounterOfferMutation.isPending || acceptCounterOfferAndChooseMutation.isPending}
                       >
                         {rejectCounterOfferMutation.isPending ? "Отклоняем..." : "Отклонить условия"}
                       </button>
                     </>
+                  )}
+
+                  {canChoosePerformer && !actionableCounterOffer && (
+                    <button
+                      type="button"
+                      onClick={() => acceptOfferMutation.mutate(numericOfferId)}
+                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                      disabled={acceptOfferMutation.isPending}
+                    >
+                      {acceptOfferMutation.isPending ? "Выбираем..." : directAcceptLabel}
+                    </button>
                   )}
 
                   <Link

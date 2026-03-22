@@ -8,6 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 
 from ..core.auth_tokens import extract_bearer_token
+from ..core.exceptions import AuthenticationError, ForbiddenError
 from ..schemas.api import (
     AdminCreateRequest,
     AdminDeleteUserResponse,
@@ -74,8 +75,15 @@ def _resolve_websocket_user(
     if authorization is None and access_token:
         authorization = f"Bearer {access_token}"
 
-    resolved_user_id = user_id or websocket.headers.get("X-User-Id")
-    return current_user_service.resolve_current_user(authorization, resolved_user_id)
+    return current_user_service.resolve_current_user(authorization)
+
+
+async def _close_websocket_with_error(websocket: WebSocket, error: Exception) -> None:
+    if isinstance(error, (AuthenticationError, ForbiddenError)):
+        await websocket.close(code=1008)
+        return
+
+    await websocket.close(code=1011)
 
 
 async def _poll_realtime_snapshot(
@@ -215,17 +223,17 @@ def list_dormitories(
 @router.get("/users/{user_id}", tags=["users"])
 def get_user_profile(
     user_id: int,
-    _: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
 ) -> dict:
-    return platform_service.get_user_profile(user_id)
+    return platform_service.get_user_profile(user_id, current_user)
 
 
 @router.get("/users/{user_id}/reviews", tags=["users"])
 def list_user_reviews(
     user_id: int,
-    _: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
 ) -> list[dict]:
-    return platform_service.list_user_reviews(user_id)
+    return platform_service.list_user_reviews(user_id, current_user)
 
 
 @router.get("/users/{user_id}/tasks", tags=["users"])
@@ -233,9 +241,9 @@ def list_user_tasks(
     user_id: int,
     role: str = Query(default="customer"),
     status: str = Query(default="active"),
-    _: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)] = None,
 ) -> list[dict]:
-    return platform_service.list_user_tasks(user_id, role, status)
+    return platform_service.list_user_tasks(user_id, role, status, current_user)
 
 
 @router.get("/tasks", tags=["tasks"])
@@ -529,8 +537,8 @@ async def notifications_ws(
         )
     except WebSocketDisconnect:
         return
-    except Exception:
-        await websocket.close(code=1011)
+    except Exception as error:
+        await _close_websocket_with_error(websocket, error)
 
 
 @router.websocket("/ws/tasks")
@@ -557,8 +565,8 @@ async def tasks_ws(
         )
     except WebSocketDisconnect:
         return
-    except Exception:
-        await websocket.close(code=1011)
+    except Exception as error:
+        await _close_websocket_with_error(websocket, error)
 
 
 @router.websocket("/ws/tasks/{task_id}")
@@ -594,8 +602,8 @@ async def task_detail_ws(
         )
     except WebSocketDisconnect:
         return
-    except Exception:
-        await websocket.close(code=1011)
+    except Exception as error:
+        await _close_websocket_with_error(websocket, error)
 
 
 @router.websocket("/ws/offers/{offer_id}/counter-offers")
@@ -625,8 +633,8 @@ async def counter_offers_ws(
         )
     except WebSocketDisconnect:
         return
-    except Exception:
-        await websocket.close(code=1011)
+    except Exception as error:
+        await _close_websocket_with_error(websocket, error)
 
 
 @router.websocket("/ws/chats/{chat_id}")
@@ -661,5 +669,5 @@ async def chat_ws(
         )
     except WebSocketDisconnect:
         return
-    except Exception:
-        await websocket.close(code=1011)
+    except Exception as error:
+        await _close_websocket_with_error(websocket, error)
