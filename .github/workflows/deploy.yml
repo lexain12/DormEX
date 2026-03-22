@@ -35,6 +35,9 @@ jobs:
               "$(git -C "$DEPLOY_PATH" remote get-url origin)" \
               "$TMP_DIR"
 
+            echo "=== Copying environment file ==="
+            cp /home/dodo/environment/.env "$TMP_DIR/.env"
+
             echo "=== Stopping and removing Docker Compose containers and images ==="
             cd "$DEPLOY_PATH"
             if command -v docker-compose &> /dev/null; then
