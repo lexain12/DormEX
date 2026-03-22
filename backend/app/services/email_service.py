@@ -1,9 +1,13 @@
 import os
+import logging
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
 
 from ..core.exceptions import ExternalServiceError
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_bool(value: str | None, default: bool = False) -> bool:
@@ -72,6 +76,14 @@ class EmailService:
 
                 smtp.send_message(message)
         except (OSError, smtplib.SMTPException) as error:
+            logger.exception(
+                "SMTP send failed for recipient=%s host=%s port=%s tls=%s ssl=%s",
+                recipient_email,
+                self.smtp_host,
+                self.smtp_port,
+                self.smtp_use_tls,
+                self.smtp_use_ssl,
+            )
             raise ExternalServiceError(
                 "Не удалось отправить письмо с кодом. Проверьте SMTP-настройки и повторите попытку."
             ) from error

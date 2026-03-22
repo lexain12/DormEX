@@ -19,6 +19,8 @@ interface AuthContextValue {
   profileCompleted: boolean;
   canUseDevSession: boolean;
   startDevSession: () => void;
+  login: (username: string, password: string) => Promise<void>;
+  register: (email: string, username: string, password: string, dormitoryId: number, fullName?: string) => Promise<void>;
   requestCode: (email: string) => Promise<RequestCodeMeta>;
   verifyCode: (email: string, code: string) => Promise<void>;
   refreshMe: () => Promise<void>;
@@ -215,6 +217,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearAuthTokens();
       clearSessionUser();
       setUser(devUser);
+      setStatus("authenticated");
+    },
+
+    login: async (username: string, password: string) => {
+      const response = await authService.login(username, password);
+      if (!response.access_token || !response.refresh_token) {
+        throw new ApiError("Не удалось получить токены сессии", 500, "missing_tokens");
+      }
+
+      setAuthTokens({
+        accessToken: response.access_token,
+        refreshToken: response.refresh_token,
+      });
+      clearDevSessionUser();
+
+      const me = response.user ?? await authService.getMe();
+      writeSessionUser(me);
+
+      setUser(me);
+      setStatus("authenticated");
+    },
+
+    register: async (email: string, username: string, password: string, dormitoryId: number, fullName?: string) => {
+      const response = await authService.register(email, username, password, dormitoryId, fullName);
+      if (!response.access_token || !response.refresh_token) {
+        throw new ApiError("Не удалось получить токены сессии", 500, "missing_tokens");
+      }
+
+      setAuthTokens({
+        accessToken: response.access_token,
+        refreshToken: response.refresh_token,
+      });
+      clearDevSessionUser();
+
+      const me = response.user ?? await authService.getMe();
+      writeSessionUser(me);
+
+      setUser(me);
       setStatus("authenticated");
     },
 

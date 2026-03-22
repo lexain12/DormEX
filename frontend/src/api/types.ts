@@ -37,15 +37,15 @@ export interface MeUser {
   bio?: string | null;
 }
 
-export interface AuthRequestCodeResponse {
-  status: string;
-  expires_in_sec: number;
-}
-
-export interface AuthVerifyCodeResponse {
+export interface AuthLoginResponse {
   access_token: string;
   refresh_token: string;
   user: MeUser;
+}
+
+export interface AuthRequestCodeResponse {
+  status: string;
+  expires_in_sec: number;
 }
 
 export type ApiTaskStatus = "open" | "offers" | "in_progress" | "completed" | "cancelled";
