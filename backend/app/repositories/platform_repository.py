@@ -1211,13 +1211,6 @@ class PlatformRepository:
         conditions = ["t.university_id = %s"]
         params: list[Any] = [current_university_id]
 
-        if current_dormitory_id is None:
-            conditions.append("(t.visibility = 'university' OR t.customer_id = %s)")
-            params.append(current_user_id)
-        else:
-            conditions.append("(t.visibility = 'university' OR t.dormitory_id = %s OR t.customer_id = %s)")
-            params.extend([current_dormitory_id, current_user_id])
-
         if filters.get("scope") == "dormitory":
             dormitory_id = filters.get("dormitory_id") or current_dormitory_id
             if dormitory_id is None:
@@ -3075,14 +3068,6 @@ class PlatformRepository:
         task = cursor.fetchone()
         if task is None:
             raise DomainValidationError("Задача не найдена")
-
-        if (
-            task["visibility"] == "dormitory"
-            and task["dormitory_id"] != current_dormitory_id
-            and task["customer_id"] != current_user_id
-            and task["accepted_offer_performer_id"] != current_user_id
-        ):
-            raise ForbiddenError("Эта задача недоступна для вашего общежития")
 
         return task
 
