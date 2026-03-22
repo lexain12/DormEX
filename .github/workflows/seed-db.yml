@@ -1,0 +1,39 @@
+name: Seed database
+
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p "${{ secrets.SERVER_PORT }}" -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy seed file to server
+        shell: bash
+        run: |
+          scp -P "${{ secrets.SERVER_PORT }}" db/seeds/seed.sql \
+            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:/tmp/dormex_seed.sql"
+
+      - name: Apply seed
+        shell: bash
+        run: |
+          ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" bash << 'ENDSSH'
+            set -e
+            echo "=== Applying seed data ==="
+            docker exec -i campus_exchange_postgres psql \
+              -U campus_user -d campus_exchange \
+              < /tmp/dormex_seed.sql
+            rm /tmp/dormex_seed.sql
+            echo "=== Seed applied successfully ==="
+          ENDSSH
