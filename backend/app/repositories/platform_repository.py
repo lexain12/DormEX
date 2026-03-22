@@ -2371,10 +2371,6 @@ class PlatformRepository:
 
         return {"status": "read"}
 
-    def request_task_completion(self, task_id: int, *, user_id: int) -> dict[str, Any]:
-        status = self._complete_or_confirm_task(task_id, user_id=user_id)
-        return {"task_id": task_id, "confirmation_status": status}
-
     def confirm_task_completion(self, task_id: int, *, user_id: int) -> dict[str, Any]:
         status = self._complete_or_confirm_task(task_id, user_id=user_id)
         return {"status": status}
@@ -2828,8 +2824,8 @@ class PlatformRepository:
                         cursor,
                         user_id=recipient_user_id,
                         notification_type="task_completed_requested",
-                        title="Запрошено завершение задачи",
-                        body="Вторая сторона уже подтвердила выполнение и ждёт вашего ответа.",
+                        title="Вторая сторона подтвердила выполнение",
+                        body="Если результат вас устраивает, подтвердите сделку со своей стороны.",
                         entity_type="task",
                         entity_id=task_id,
                         payload={"task_id": task_id},

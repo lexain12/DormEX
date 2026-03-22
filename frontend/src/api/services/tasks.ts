@@ -67,10 +67,6 @@ export const tasksService = {
     body: { reason },
   }),
 
-  completeRequest: (taskId: number) => apiRequest<{ task_id?: number; confirmation_status?: string }>(`/tasks/${taskId}/complete-request`, {
-    method: "POST",
-  }),
-
   confirmCompletion: (taskId: number) => apiRequest<{ status?: string }>(`/tasks/${taskId}/confirm-completion`, {
     method: "POST",
   }),

@@ -419,27 +419,6 @@ const TaskDetail = () => {
     },
   });
 
-  const completeRequestMutation = useMutation({
-    mutationFn: () => tasksService.completeRequest(numericTaskId),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
-      ]);
-      toast({
-        title: "Запрос на завершение отправлен",
-        description: "Ожидаем подтверждение второй стороны.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Не удалось отправить запрос",
-        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const confirmCompletionMutation = useMutation({
     mutationFn: () => tasksService.confirmCompletion(numericTaskId),
     onSuccess: async (response) => {
@@ -843,7 +822,7 @@ const TaskDetail = () => {
           description: completionConfirmedByMe
             ? "Вы уже подтвердили завершение со своей стороны. Когда исполнитель подтвердит результат, сделка закроется."
             : hasCounterpartConfirmed
-              ? "Исполнитель уже отметил работу как завершённую. Проверьте результат и подтвердите сделку, если всё в порядке."
+              ? "Исполнитель уже подтвердил выполнение. Проверьте результат и подтвердите сделку, если всё в порядке."
               : "Поддерживайте связь в чате и подтвердите выполнение, когда всё будет готово.",
         };
       }
@@ -856,10 +835,10 @@ const TaskDetail = () => {
               ? "Заказчик уже подтвердил выполнение"
               : "Задача у вас в работе",
           description: completionConfirmedByMe
-            ? "Вы уже сообщили о завершении. Теперь нужно дождаться подтверждения заказчика."
+            ? "Вы уже подтвердили сдачу работы. Теперь нужно дождаться подтверждения заказчика."
             : hasCounterpartConfirmed
               ? "Заказчик уже подтвердил выполнение со своей стороны. Подтвердите сдачу работы, чтобы закрыть сделку."
-              : "Когда работа будет готова, можно запросить закрытие сделки и подтвердить выполнение.",
+              : "Когда работа будет готова, подтвердите сдачу работы. После ответа заказчика сделка закроется.",
         };
       }
 
@@ -1355,23 +1334,6 @@ const TaskDetail = () => {
                 {canManageProgress && (
                   <>
                     <button
-                      onClick={() => completeRequestMutation.mutate()}
-                      className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={completeRequestMutation.isPending || isAwaitingOtherPartyConfirmation || hasCounterpartConfirmed || hasOpenDispute}
-                    >
-                      {completeRequestMutation.isPending
-                        ? "Отправляем..."
-                        : isAwaitingOtherPartyConfirmation
-                          ? "Ожидаем вторую сторону"
-                          : hasCounterpartConfirmed
-                            ? "Вторая сторона уже подтвердила"
-                            : hasOpenDispute
-                              ? "Сделка на паузе из-за спора"
-                          : isTaskOwner
-                            ? "Предложить закрыть сделку"
-                            : "Сообщить, что работа готова"}
-                    </button>
-                    <button
                       onClick={() => confirmCompletionMutation.mutate()}
                       className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
                       disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
@@ -1405,7 +1367,7 @@ const TaskDetail = () => {
                   <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
                     {isTaskOwner
                       ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
-                      : "Вы уже сообщили о завершении работы. Сделка закроется после ответа заказчика."}
+                      : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
                   </div>
                 )}
 

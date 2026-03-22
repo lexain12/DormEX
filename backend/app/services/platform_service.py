@@ -277,9 +277,6 @@ class PlatformService:
     def mark_chat_read(self, chat_id: int, current_user: CurrentUserContext) -> dict[str, Any]:
         return self.repository.mark_chat_read(chat_id, user_id=current_user.id)
 
-    def request_task_completion(self, task_id: int, current_user: CurrentUserContext) -> dict[str, Any]:
-        return self.repository.request_task_completion(task_id, user_id=current_user.id)
-
     def confirm_task_completion(self, task_id: int, current_user: CurrentUserContext) -> dict[str, Any]:
         return self.repository.confirm_task_completion(task_id, user_id=current_user.id)
 
