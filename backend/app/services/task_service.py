@@ -1,4 +1,4 @@
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import DomainValidationError, ForbiddenError
 from ..repositories.notification_repository import NotificationRepository
 from ..repositories.task_repository import TaskRepository
 from ..repositories.user_repository import UserRepository
@@ -206,3 +206,11 @@ class TaskService:
         if assignment["performer_id"] == user_id:
             return "performer"
         raise DomainValidationError("Current user is not a participant of this task")
+
+    def delete_all_tasks_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.task_repository.delete_all_tasks()
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

@@ -102,3 +102,9 @@ class ReportRepository:
                 row = cursor.fetchone()
             connection.commit()
         return row
+
+    def delete_all_reports(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM reports")
+            connection.commit()

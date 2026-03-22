@@ -35,7 +35,7 @@ class UserService:
 
         badges: list[str] = []
         if profile["email_verified_at"] is not None:
-            badges.append("verified_student")
+            badges.append("verified_user")
         if profile["completed_tasks_count"] >= 5:
             badges.append("fast_responder")
 
