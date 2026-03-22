@@ -1370,6 +1370,24 @@ class PlatformRepository:
                     (task_id, current_user_id),
                 )
                 own_offer = cursor.fetchone()
+                cursor.execute(
+                    """
+                    SELECT
+                        confirmation.status,
+                        confirmation.customer_confirmed_at,
+                        confirmation.performer_confirmed_at,
+                        assignment.customer_id,
+                        assignment.performer_id
+                    FROM task_assignments assignment
+                    LEFT JOIN task_completion_confirmations confirmation
+                        ON confirmation.task_assignment_id = assignment.id
+                    WHERE assignment.task_id = %s
+                    ORDER BY assignment.id DESC
+                    LIMIT 1
+                    """,
+                    (task_id,),
+                )
+                completion_confirmation = cursor.fetchone()
                 review_summary = self._build_task_review_summary(cursor, task_id, current_user_id=current_user_id)
 
         task = self._serialize_task_summary(row)
@@ -1381,6 +1399,24 @@ class PlatformRepository:
             and (own_offer is None or own_offer["status"] in ("rejected", "withdrawn"))
         )
         task["accepted_offer"] = None
+        task["completion_confirmation_status"] = (
+            completion_confirmation["status"]
+            if completion_confirmation is not None
+            else None
+        )
+        task["completion_confirmed_by_me"] = bool(
+            completion_confirmation is not None
+            and (
+                (
+                    completion_confirmation["customer_id"] == current_user_id
+                    and completion_confirmation["customer_confirmed_at"] is not None
+                )
+                or (
+                    completion_confirmation["performer_id"] == current_user_id
+                    and completion_confirmation["performer_confirmed_at"] is not None
+                )
+            )
+        )
         task["review_summary"] = review_summary
 
         if row["accepted_offer_id"] is not None:

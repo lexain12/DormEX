@@ -9,6 +9,7 @@ import { useAuth } from "@/context/auth-context";
 import { queryKeys } from "@/api/query-keys";
 import { authService } from "@/api/services/auth";
 import { notificationsService } from "@/api/services/notifications";
+import type { NotificationDto } from "@/api/types";
 import { formatEventTime, resolveNotificationDestination } from "@/lib/task-mappers";
 import {
   DropdownMenu,
@@ -21,6 +22,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 
 interface TopNavProps {
   onCreateRequest: () => void;
@@ -33,6 +35,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsTab, setNotificationsTab] = useState<"all" | "unread">("all");
   const [searchValue, setSearchValue] = useState("");
+  const [liveUnreadCount, setLiveUnreadCount] = useState<number | null>(null);
   const { theme, setTheme } = useTheme();
   const { status, logout, user } = useAuth();
   const { selectedDorm, setSelectedDorm } = useInteractionStore();
@@ -63,9 +66,61 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
     enabled: isAuthenticated,
   });
 
+  useRealtimeChannel({
+    enabled: isAuthenticated,
+    path: "/ws/notifications",
+    onMessage: (message: { unread_count?: number; items?: NotificationDto[] }) => {
+      if (typeof message.unread_count === "number") {
+        setLiveUnreadCount(message.unread_count);
+        queryClient.setQueryData(queryKeys.unreadNotificationsCount, {
+          unread_count: message.unread_count,
+        });
+      }
+
+      if (message.items) {
+        queryClient.setQueryData(queryKeys.notifications("all"), {
+          items: message.items,
+          unread_count: message.unread_count ?? liveUnreadCount ?? unreadCountQuery.data?.unread_count ?? 0,
+          limit: message.items.length,
+          offset: 0,
+        });
+        queryClient.setQueryData(queryKeys.notifications("unread"), {
+          items: message.items.filter((notification) => !notification.is_read),
+          unread_count: message.unread_count ?? liveUnreadCount ?? unreadCountQuery.data?.unread_count ?? 0,
+          limit: message.items.length,
+          offset: 0,
+        });
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: ["notifications"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.unreadNotificationsCount, type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["task"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["offers"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["counter-offers"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.chats, type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["chat"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["user"], type: "active" }),
+      ]);
+    },
+  });
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLiveUnreadCount(null);
+      return;
+    }
+
+    if (typeof unreadCountQuery.data?.unread_count === "number") {
+      setLiveUnreadCount(unreadCountQuery.data.unread_count);
+    }
+  }, [isAuthenticated, unreadCountQuery.data?.unread_count]);
+
   const markReadMutation = useMutation({
     mutationFn: notificationsService.markRead,
     onSuccess: async () => {
+      setLiveUnreadCount((current) => Math.max(0, (current ?? unreadCountQuery.data?.unread_count ?? 1) - 1));
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotificationsCount }),
@@ -83,6 +138,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
   const markAllReadMutation = useMutation({
     mutationFn: notificationsService.markAllRead,
     onSuccess: async () => {
+      setLiveUnreadCount(0);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["notifications"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.unreadNotificationsCount }),
@@ -104,7 +160,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
   ];
 
   const notifications = notificationsQuery.data?.items ?? [];
-  const unreadNotificationsCount = unreadCountQuery.data?.unread_count ?? 0;
+  const unreadNotificationsCount = liveUnreadCount ?? unreadCountQuery.data?.unread_count ?? notificationsQuery.data?.unread_count ?? 0;
   const dormitoryOptions = useMemo(() => {
     const apiDormitories = dormitoriesQuery.data ?? [];
 

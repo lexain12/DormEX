@@ -1,6 +1,11 @@
-from typing import Annotated
+import asyncio
+import hashlib
+import json
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 
 from ..core.auth_tokens import extract_bearer_token
 from ..schemas.api import (
@@ -24,6 +29,7 @@ from ..schemas.api import (
 from ..services.current_user_service import CurrentUserContext
 from ..services.platform_service import PlatformService
 from .dependencies import (
+    current_user_service,
     get_authenticated_admin_context,
     get_current_user_context,
 )
@@ -31,6 +37,67 @@ from .dependencies import (
 
 router = APIRouter(prefix="/api/v1")
 platform_service = PlatformService()
+REALTIME_POLL_INTERVAL_SECONDS = 2
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    if isinstance(value, Decimal):
+        return float(value)
+
+    return str(value)
+
+
+def _snapshot_signature(payload: Any) -> str:
+    serialized = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=True,
+        default=_json_default,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _json_compatible(payload: Any) -> Any:
+    return json.loads(json.dumps(payload, default=_json_default))
+
+
+def _resolve_websocket_user(
+    websocket: WebSocket,
+    *,
+    access_token: str | None,
+    user_id: str | None,
+) -> CurrentUserContext:
+    authorization = websocket.headers.get("Authorization")
+    if authorization is None and access_token:
+        authorization = f"Bearer {access_token}"
+
+    resolved_user_id = user_id or websocket.headers.get("X-User-Id")
+    return current_user_service.resolve_current_user(authorization, resolved_user_id)
+
+
+async def _poll_realtime_snapshot(
+    websocket: WebSocket,
+    *,
+    get_snapshot,
+    get_event,
+) -> None:
+    last_signature: str | None = None
+
+    while True:
+        snapshot = get_snapshot()
+        signature = _snapshot_signature(snapshot)
+
+        if last_signature is None:
+            last_signature = signature
+        elif signature != last_signature:
+            last_signature = signature
+            await websocket.send_json(_json_compatible(get_event(snapshot)), mode="text")
+
+        await asyncio.sleep(REALTIME_POLL_INTERVAL_SECONDS)
 
 
 @router.post("/auth/email/request-code", tags=["auth"])
@@ -443,3 +510,164 @@ def get_category_analytics(
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
 ) -> dict:
     return platform_service.get_category_analytics(category, current_user)
+
+
+@router.websocket("/ws/notifications")
+async def notifications_ws(
+    websocket: WebSocket,
+    access_token: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> None:
+    await websocket.accept()
+
+    try:
+        current_user = _resolve_websocket_user(
+            websocket,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        await _poll_realtime_snapshot(
+            websocket,
+            get_snapshot=lambda: platform_service.list_notifications(current_user, "all", 20, 0),
+            get_event=lambda snapshot: {
+                "event": "notifications_updated",
+                "items": snapshot["items"],
+                "unread_count": snapshot["unread_count"],
+            },
+        )
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
+
+
+@router.websocket("/ws/tasks")
+async def tasks_ws(
+    websocket: WebSocket,
+    access_token: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> None:
+    await websocket.accept()
+
+    try:
+        current_user = _resolve_websocket_user(
+            websocket,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        await _poll_realtime_snapshot(
+            websocket,
+            get_snapshot=lambda: platform_service.list_tasks(current_user, {}, limit=100, offset=0),
+            get_event=lambda snapshot: {
+                "event": "tasks_updated",
+                "total": snapshot["total"],
+            },
+        )
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
+
+
+@router.websocket("/ws/tasks/{task_id}")
+async def task_detail_ws(
+    websocket: WebSocket,
+    task_id: int,
+    access_token: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> None:
+    await websocket.accept()
+
+    try:
+        current_user = _resolve_websocket_user(
+            websocket,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        await _poll_realtime_snapshot(
+            websocket,
+            get_snapshot=lambda: {
+                "task": platform_service.get_task_detail(task_id, current_user),
+                "offers": platform_service.list_task_offers(task_id, current_user),
+            },
+            get_event=lambda snapshot: {
+                "event": "task_updated",
+                "task_id": task_id,
+                "task": snapshot["task"],
+                "offers": snapshot["offers"],
+                "status": snapshot["task"].get("status"),
+                "chat_id": snapshot["task"].get("chat_id"),
+                "offers_count": len(snapshot["offers"]),
+            },
+        )
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
+
+
+@router.websocket("/ws/offers/{offer_id}/counter-offers")
+async def counter_offers_ws(
+    websocket: WebSocket,
+    offer_id: int,
+    access_token: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> None:
+    await websocket.accept()
+
+    try:
+        current_user = _resolve_websocket_user(
+            websocket,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        await _poll_realtime_snapshot(
+            websocket,
+            get_snapshot=lambda: platform_service.list_counter_offers(offer_id, current_user),
+            get_event=lambda snapshot: {
+                "event": "counter_offers_updated",
+                "offer_id": offer_id,
+                "items": snapshot,
+                "total": len(snapshot),
+            },
+        )
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
+
+
+@router.websocket("/ws/chats/{chat_id}")
+async def chat_ws(
+    websocket: WebSocket,
+    chat_id: int,
+    access_token: str | None = Query(default=None),
+    user_id: str | None = Query(default=None),
+) -> None:
+    await websocket.accept()
+
+    try:
+        current_user = _resolve_websocket_user(
+            websocket,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        await _poll_realtime_snapshot(
+            websocket,
+            get_snapshot=lambda: platform_service.list_chat_messages(
+                chat_id,
+                current_user,
+                limit=100,
+                before_message_id=None,
+            ),
+            get_event=lambda snapshot: {
+                "event": "chat_messages_updated",
+                "chat_id": chat_id,
+                "items": snapshot["items"],
+                "last_message_id": snapshot["items"][-1]["id"] if snapshot["items"] else None,
+            },
+        )
+    except WebSocketDisconnect:
+        return
+    except Exception:
+        await websocket.close(code=1011)
