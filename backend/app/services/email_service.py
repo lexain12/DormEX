@@ -12,9 +12,6 @@ from ..core.exceptions import ExternalServiceError
 logger = logging.getLogger(__name__)
 
 
-logger = logging.getLogger(__name__)
-
-
 def _parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
@@ -32,7 +29,6 @@ class EmailService:
         self.smtp_use_ssl = _parse_bool(os.getenv("SMTP_USE_SSL"), default=False)
         self.from_email = os.getenv("SMTP_FROM_EMAIL", "no-reply@campus.test")
         self.from_name = os.getenv("SMTP_FROM_NAME", "dormex")
-        self.local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
         self.local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
 
     def send_verification_code(
@@ -82,46 +78,6 @@ class EmailService:
                     smtp.login(self.smtp_username, self.smtp_password)
 
                 smtp.send_message(message)
-        except smtplib.SMTPAuthenticationError as error:
-            raise ExternalServiceError(
-                "SMTP отклонил авторизацию. Проверьте логин почты и пароль приложения."
-            ) from error
-        except smtplib.SMTPRecipientsRefused as error:
-            raise ExternalServiceError(
-                "Почтовый провайдер отклонил адрес получателя. Для реальной отправки используйте существующий email, а не demo-адрес."
-            ) from error
-        except smtplib.SMTPResponseException as error:
-            if error.smtp_code in {451, 452}:
-                raise ExternalServiceError(
-                    "Почтовый провайдер временно ограничил отправку. Подождите немного и попробуйте снова."
-                ) from error
-            if error.smtp_code in {550, 551, 552, 553, 554}:
-                raise ExternalServiceError(
-                    "Почтовый провайдер отклонил письмо. Проверьте, что email получателя существует и принимает письма."
-                ) from error
-            raise ExternalServiceError(
-                f"SMTP вернул ошибку {error.smtp_code}. Проверьте настройки почты и адрес получателя."
-            ) from error
-        except smtplib.SMTPAuthenticationError as error:
-            raise ExternalServiceError(
-                "SMTP отклонил авторизацию. Проверьте логин почты и пароль приложения."
-            ) from error
-        except smtplib.SMTPRecipientsRefused as error:
-            raise ExternalServiceError(
-                "Почтовый провайдер отклонил адрес получателя. Для реальной отправки используйте существующий email, а не demo-адрес."
-            ) from error
-        except smtplib.SMTPResponseException as error:
-            if error.smtp_code in {451, 452}:
-                raise ExternalServiceError(
-                    "Почтовый провайдер временно ограничил отправку. Подождите немного и попробуйте снова."
-                ) from error
-            if error.smtp_code in {550, 551, 552, 553, 554}:
-                raise ExternalServiceError(
-                    "Почтовый провайдер отклонил письмо. Проверьте, что email получателя существует и принимает письма."
-                ) from error
-            raise ExternalServiceError(
-                f"SMTP вернул ошибку {error.smtp_code}. Проверьте настройки почты и адрес получателя."
-            ) from error
         except (OSError, smtplib.SMTPException) as error:
             logger.exception(
                 "SMTP send failed host=%s port=%s ssl=%s tls=%s from=%s to=%s",
