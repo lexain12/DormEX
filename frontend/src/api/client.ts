@@ -23,14 +23,14 @@ type AuthMode = "access" | "refresh" | "none";
 interface RequestOptions extends Omit<RequestInit, "body"> {
   authMode?: AuthMode;
   body?: unknown;
-  query?: Record<string, string | number | boolean | null | undefined>;
+  query?: object;
   disableRefreshRetry?: boolean;
   timeoutMs?: number;
 }
 
 let refreshPromise: Promise<string | null> | null = null;
 
-function buildQuery(query?: Record<string, string | number | boolean | null | undefined>): string {
+function buildQuery(query?: object): string {
   if (!query) {
     return "";
   }
