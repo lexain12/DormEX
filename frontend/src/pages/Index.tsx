@@ -14,6 +14,8 @@ import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { CATEGORIES } from "@/lib/data";
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 
+const DEMO_POLL_INTERVAL_MS = 3_000;
+
 const Index = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,7 +36,7 @@ const Index = () => {
       limit: 30,
       offset: 0,
     }),
-    refetchInterval: 60_000,
+    refetchInterval: DEMO_POLL_INTERVAL_MS,
   });
 
   useRealtimeChannel({

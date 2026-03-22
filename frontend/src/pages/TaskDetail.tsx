@@ -25,6 +25,8 @@ import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDet
 
 type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | "review" | null;
 
+const DEMO_POLL_INTERVAL_MS = 3_000;
+
 const OFFER_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидает",
   accepted: "Принят",
@@ -84,7 +86,7 @@ const TaskDetail = () => {
     queryKey: queryKeys.task(numericTaskId),
     queryFn: () => tasksService.getById(numericTaskId),
     enabled: hasValidTaskId,
-    refetchInterval: hasValidTaskId ? 60_000 : false,
+    refetchInterval: hasValidTaskId ? DEMO_POLL_INTERVAL_MS : false,
   });
   const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
   const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
@@ -93,21 +95,21 @@ const TaskDetail = () => {
     queryKey: queryKeys.offers(numericTaskId),
     queryFn: () => offersService.listByTask(numericTaskId),
     enabled: taskQuery.isSuccess,
-    refetchInterval: taskQuery.isSuccess ? 60_000 : false,
+    refetchInterval: taskQuery.isSuccess ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   const chatsQuery = useQuery({
     queryKey: queryKeys.chats,
     queryFn: chatsService.list,
     enabled: taskQuery.isSuccess,
-    refetchInterval: taskQuery.isSuccess ? 60_000 : false,
+    refetchInterval: taskQuery.isSuccess ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   const counterOffersQuery = useQuery({
     queryKey: queryKeys.counterOffers(selectedOfferForCounter ?? 0),
     queryFn: () => offersService.listCounterOffers(selectedOfferForCounter as number),
     enabled: actionModal === "counter" && Boolean(selectedOfferForCounter),
-    refetchInterval: actionModal === "counter" && Boolean(selectedOfferForCounter) ? 60_000 : false,
+    refetchInterval: actionModal === "counter" && Boolean(selectedOfferForCounter) ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   const analyticsCategory = taskQuery.data?.category ?? null;
@@ -133,7 +135,7 @@ const TaskDetail = () => {
     queryKey: queryKeys.chatMessages(chatId ?? 0),
     queryFn: () => chatsService.listMessages(chatId as number, { limit: 50 }),
     enabled: actionModal === "message" && canOpenChat,
-    refetchInterval: actionModal === "message" ? 15_000 : false,
+    refetchInterval: actionModal === "message" ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   useRealtimeChannel({

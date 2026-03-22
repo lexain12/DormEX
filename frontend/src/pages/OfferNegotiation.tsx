@@ -14,6 +14,8 @@ import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { toast } from "@/hooks/use-toast";
 import { PAYMENT_LABELS, STATUS_LABELS } from "@/lib/data";
 
+const DEMO_POLL_INTERVAL_MS = 3_000;
+
 const COUNTER_STATUS_LABELS: Record<string, string> = {
   pending: "Ожидает ответа",
   accepted: "Принято",
@@ -52,21 +54,21 @@ export default function OfferNegotiation() {
     queryKey: queryKeys.task(numericTaskId),
     queryFn: () => tasksService.getById(numericTaskId),
     enabled: hasValidParams,
-    refetchInterval: hasValidParams ? 60_000 : false,
+    refetchInterval: hasValidParams ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
     queryFn: () => offersService.listByTask(numericTaskId),
     enabled: hasValidParams,
-    refetchInterval: hasValidParams ? 60_000 : false,
+    refetchInterval: hasValidParams ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   const counterOffersQuery = useQuery({
     queryKey: queryKeys.counterOffers(numericOfferId),
     queryFn: () => offersService.listCounterOffers(numericOfferId),
     enabled: hasValidParams,
-    refetchInterval: hasValidParams ? 60_000 : false,
+    refetchInterval: hasValidParams ? DEMO_POLL_INTERVAL_MS : false,
   });
 
   useRealtimeChannel({
