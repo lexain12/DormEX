@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
@@ -8,6 +8,9 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
 
 const CODE_TTL_FALLBACK_SEC = 600;
+const PREVIEW_USERNAME = "user1";
+const PREVIEW_PASSWORD = "123";
+const PREVIEW_ON = ["1", "true", "yes", "on"].includes(String(import.meta.env.PREVIEW_ON ?? "").trim().toLowerCase());
 
 const AuthPage = () => {
   const { login, register, requestCode, verifyCode, canUseDevSession, startDevSession } = useAuth();
@@ -35,6 +38,15 @@ const AuthPage = () => {
     enabled: credentialsMode === "register" && normalizedRegistrationEmail.length >= 3,
     retry: false,
   });
+
+  useEffect(() => {
+    if (!PREVIEW_ON || authMode !== "credentials" || credentialsMode !== "login") {
+      return;
+    }
+
+    setUsername((currentValue) => currentValue || PREVIEW_USERNAME);
+    setPassword((currentValue) => currentValue || PREVIEW_PASSWORD);
+  }, [authMode, credentialsMode]);
 
   const sendCode = async (targetEmail: string) => {
     const result = await requestCode(targetEmail);

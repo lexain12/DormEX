@@ -2,6 +2,9 @@ FROM node:20 AS frontend-builder
 
 WORKDIR /app/frontend
 
+ARG PREVIEW_ON=false
+ENV PREVIEW_ON=${PREVIEW_ON}
+
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 

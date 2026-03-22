@@ -18,6 +18,14 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
     exit 1
 fi
 
+# Load local overrides from .env so build args and status output match docker-compose.
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source .env
+    set +a
+fi
+
 # Stop and remove existing containers
 echo "Stopping and removing existing containers..."
 if command -v docker-compose &> /dev/null; then
@@ -37,7 +45,7 @@ docker build -t campus-exchange-hub-01-backend:latest ./backend
 
 # Build the nginx image with bundled frontend
 echo "Building nginx Docker image..."
-docker build -t campus-exchange-hub-01-nginx:latest -f nginx/Dockerfile .
+docker build --build-arg PREVIEW_ON="${PREVIEW_ON:-false}" -t campus-exchange-hub-01-nginx:latest -f nginx/Dockerfile .
 
 # Start services with docker-compose
 echo "Starting services..."

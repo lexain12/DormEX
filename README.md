@@ -147,6 +147,7 @@ docker compose logs -f backend
 Основные переменные лежат в `.env.example`:
 
 - `NGINX_HOST_PORT`
+- `PREVIEW_ON`
 - `AUTH_ALLOW_ANY_EMAIL_DOMAIN`
 - `EMAIL_CODE_TTL_SEC`
 - `EMAIL_CODE_RESEND_INTERVAL_SEC`

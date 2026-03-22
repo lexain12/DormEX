@@ -74,6 +74,8 @@ services:
     build:
       context: .
       dockerfile: nginx/Dockerfile
+      args:
+        PREVIEW_ON: ${PREVIEW_ON:-false}
     image: campus-exchange-hub-01-nginx:latest
     pull_policy: never
     container_name: campus_exchange_nginx
