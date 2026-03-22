@@ -21,26 +21,38 @@ jobs:
 
       - name: Deploy on server
         shell: bash
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          REPO_URL: ${{ secrets.REPO_URL }}
         run: |
-          ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" bash << 'ENDSSH'
+          ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
+            DEPLOY_PATH="$DEPLOY_PATH" REPO_URL="$REPO_URL" bash << 'ENDSSH'
             set -e
-            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             TMP_DIR="${DEPLOY_PATH}.tmp"
+            ENV_FILE="/home/dodo/environment/.env"
 
             echo "=== Removing old temp directory if exists ==="
             rm -rf "$TMP_DIR"
 
             echo "=== Cloning repository into temp directory ==="
-            git clone --depth=1 --branch main \
-              "$(git -C "$DEPLOY_PATH" remote get-url origin)" \
-              "$TMP_DIR"
+            git clone --depth=1 --branch main "$REPO_URL" "$TMP_DIR"
+
+            echo "=== Copying environment file into fresh clone ==="
+            if [ -f "$ENV_FILE" ]; then
+              cp "$ENV_FILE" "$TMP_DIR/.env"
+              echo "Environment file copied."
+            else
+              echo "Warning: $ENV_FILE not found, skipping."
+            fi
 
             echo "=== Stopping and removing Docker Compose containers and images ==="
-            cd "$DEPLOY_PATH"
-            if command -v docker-compose &> /dev/null; then
-              docker-compose down --rmi local || true
-            else
-              docker compose down --rmi local || true
+            if [ -d "$DEPLOY_PATH" ]; then
+              cd "$DEPLOY_PATH"
+              if command -v docker-compose &> /dev/null; then
+                docker-compose down --rmi local || true
+              else
+                docker compose down --rmi local || true
+              fi
             fi
 
             echo "=== Replacing deploy directory with fresh clone ==="
@@ -54,9 +66,3 @@ jobs:
 
             echo "=== Deployment completed successfully! ==="
           ENDSSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
