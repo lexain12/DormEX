@@ -23,7 +23,7 @@ jobs:
         shell: bash
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          REPO_URL: ${{ secrets.REPO_URL }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" \
             DEPLOY_PATH="$DEPLOY_PATH" REPO_URL="$REPO_URL" bash << 'ENDSSH'
