@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { queryKeys } from "@/api/query-keys";
@@ -10,10 +10,12 @@ import { TaskCard } from "@/components/TaskCard";
 import { RightSidebar } from "@/components/RightSidebar";
 import { CategoryChips } from "@/components/CategoryChips";
 import { CreateRequestModal } from "@/components/CreateRequestModal";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { CATEGORIES } from "@/lib/data";
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 
 const Index = () => {
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -32,6 +34,14 @@ const Index = () => {
       limit: 30,
       offset: 0,
     }),
+    refetchInterval: 60_000,
+  });
+
+  useRealtimeChannel({
+    path: "/ws/tasks",
+    onMessage: () => {
+      void queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" });
+    },
   });
 
   const allTasks = useMemo(
