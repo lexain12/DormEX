@@ -320,6 +320,13 @@ class PlatformService:
             category=category,
         )
 
+    def get_category_deals(self, category: str, current_user: CurrentUserContext, *, limit: int) -> dict[str, Any]:
+        return self.repository.get_category_deals(
+            university_id=current_user.university_id,
+            category=category,
+            limit=limit,
+        )
+
     def _ensure_admin(self, current_user: CurrentUserContext) -> None:
         if current_user.role != "admin":
             raise ForbiddenError("Доступно только администратору")

@@ -154,7 +154,7 @@ export function TopNav({ onCreateRequest }: TopNavProps) {
   });
 
   const navItems = [
-    { label: "Биржа", path: "/" },
+    { label: "Лента", path: "/" },
     { label: "Аналитика", path: "/analytics" },
     { label: "Мой профиль", path: "/profile" },
   ];

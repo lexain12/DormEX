@@ -249,6 +249,18 @@ export interface CategoryAnalyticsDto {
   price_histogram: Array<{ range: string; count: number }>;
 }
 
+export interface CategoryDealPointDto {
+  task_id: number;
+  title: string;
+  price_amount: number;
+  completed_at: string;
+}
+
+export interface CategoryDealsDto {
+  category: string;
+  points: CategoryDealPointDto[];
+}
+
 export interface UserProfileDto {
   id: number;
   full_name: string;

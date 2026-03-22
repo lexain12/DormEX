@@ -2719,6 +2719,43 @@ class PlatformRepository:
             ],
         }
 
+    def get_category_deals(self, *, university_id: int, category: str, limit: int) -> dict[str, Any]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT
+                        t.id AS task_id,
+                        t.title,
+                        COALESCE(a.agreed_price_amount, t.price_amount) AS price_amount,
+                        COALESCE(t.completed_at, a.completed_at) AS completed_at
+                    FROM tasks t
+                    LEFT JOIN task_assignments a ON a.task_id = t.id
+                    WHERE t.university_id = %s
+                      AND t.category = %s
+                      AND t.status = 'completed'
+                      AND COALESCE(a.agreed_price_amount, t.price_amount) IS NOT NULL
+                      AND COALESCE(t.completed_at, a.completed_at) IS NOT NULL
+                    ORDER BY COALESCE(t.completed_at, a.completed_at) DESC, t.id DESC
+                    LIMIT %s
+                    """,
+                    (university_id, category, limit),
+                )
+                rows = list(cursor.fetchall())
+
+        return {
+            "category": category,
+            "points": [
+                {
+                    "task_id": int(row["task_id"]),
+                    "title": row["title"],
+                    "price_amount": int(row["price_amount"]),
+                    "completed_at": row["completed_at"],
+                }
+                for row in rows
+            ],
+        }
+
     def _complete_or_confirm_task(self, task_id: int, *, user_id: int) -> str:
         with get_connection() as connection:
             with connection.cursor() as cursor:
