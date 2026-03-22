@@ -28,6 +28,7 @@ class EmailService:
         self.from_email = os.getenv("SMTP_FROM_EMAIL", "no-reply@campus.test")
         self.from_name = os.getenv("SMTP_FROM_NAME", "dormex")
         self.local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
+        self.local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
 
     def send_verification_code(
         self,
