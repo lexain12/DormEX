@@ -23,7 +23,8 @@ import {
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 
-type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | "review" | null;
+type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "review" | null;
+type PriceModalMode = "custom" | "task-fixed";
 
 const DEMO_POLL_INTERVAL_MS = 3_000;
 
@@ -55,6 +56,7 @@ const TaskDetail = () => {
   const [serviceEta, setServiceEta] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [priceComment, setPriceComment] = useState("");
+  const [priceModalMode, setPriceModalMode] = useState<PriceModalMode>("custom");
   const [messageValue, setMessageValue] = useState("");
   const [counterMessage, setCounterMessage] = useState("");
   const [counterPaymentType, setCounterPaymentType] = useState<ApiPaymentType>("fixed_price");
@@ -66,7 +68,6 @@ const TaskDetail = () => {
   const [editOfferPriceValue, setEditOfferPriceValue] = useState("");
   const [editOfferBarterDescription, setEditOfferBarterDescription] = useState("");
   const [cancelReason, setCancelReason] = useState("");
-  const [disputeComment, setDisputeComment] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
 
@@ -76,7 +77,6 @@ const TaskDetail = () => {
   const [counterError, setCounterError] = useState<string | null>(null);
   const [editOfferError, setEditOfferError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [disputeError, setDisputeError] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   const numericTaskId = Number(id);
@@ -90,6 +90,9 @@ const TaskDetail = () => {
   });
   const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
   const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
+  const fixedTaskPrice = taskQuery.data?.payment_type === "fixed_price" && typeof taskQuery.data?.price_amount === "number"
+    ? taskQuery.data.price_amount
+    : null;
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
@@ -421,27 +424,6 @@ const TaskDetail = () => {
     },
   });
 
-  const completeRequestMutation = useMutation({
-    mutationFn: () => tasksService.completeRequest(numericTaskId),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
-      ]);
-      toast({
-        title: "Запрос на завершение отправлен",
-        description: "Ожидаем подтверждение второй стороны.",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "Не удалось отправить запрос",
-        description: error instanceof Error ? error.message : "Попробуйте ещё раз.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const confirmCompletionMutation = useMutation({
     mutationFn: () => tasksService.confirmCompletion(numericTaskId),
     onSuccess: async (response) => {
@@ -472,26 +454,6 @@ const TaskDetail = () => {
     },
   });
 
-  const openDisputeMutation = useMutation({
-    mutationFn: (comment: string) => tasksService.openDispute(numericTaskId, comment),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
-      ]);
-      toast({
-        title: "Спор открыт",
-        description: "Заявка отправлена в модерацию.",
-      });
-      setDisputeComment("");
-      setDisputeError(null);
-      setActionModal(null);
-    },
-    onError: (error) => {
-      setDisputeError(error instanceof Error ? error.message : "Не удалось открыть спор");
-    },
-  });
-
   const createReviewMutation = useMutation({
     mutationFn: (payload: { rating: number; comment: string | null }) => tasksService.createReview(numericTaskId, payload),
     onSuccess: async () => {
@@ -519,13 +481,13 @@ const TaskDetail = () => {
 
   const closeActionModal = () => {
     setActionModal(null);
+    setPriceModalMode("custom");
     setServiceError(null);
     setPriceError(null);
     setMessageError(null);
     setCounterError(null);
     setEditOfferError(null);
     setCancelError(null);
-    setDisputeError(null);
     setReviewError(null);
   };
 
@@ -566,7 +528,9 @@ const TaskDetail = () => {
 
   const handlePriceSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const normalizedPrice = Number(priceValue);
+    const normalizedPrice = priceModalMode === "task-fixed" && fixedTaskPrice !== null
+      ? fixedTaskPrice
+      : Number(priceValue);
 
     if (!priceValue || Number.isNaN(normalizedPrice) || normalizedPrice <= 0) {
       setPriceError("Введите корректную сумму предложения.");
@@ -583,7 +547,7 @@ const TaskDetail = () => {
       });
 
       toast({
-        title: "Цена отправлена",
+        title: priceModalMode === "task-fixed" ? "Отклик по цене заказчика отправлен" : "Цена отправлена",
         description: "Ценовой отклик добавлен к задаче.",
       });
 
@@ -593,6 +557,26 @@ const TaskDetail = () => {
     } catch (error) {
       setPriceError(error instanceof Error ? error.message : "Не удалось отправить цену");
     }
+  };
+
+  const openCustomPriceModal = () => {
+    setPriceModalMode("custom");
+    setPriceValue("");
+    setPriceComment("");
+    setPriceError(null);
+    setActionModal("price");
+  };
+
+  const openTaskFixedPriceModal = () => {
+    if (fixedTaskPrice === null) {
+      return;
+    }
+
+    setPriceModalMode("task-fixed");
+    setPriceValue(String(fixedTaskPrice));
+    setPriceComment("");
+    setPriceError(null);
+    setActionModal("price");
   };
 
   const handleMessageSubmit = async (event: FormEvent) => {
@@ -713,19 +697,6 @@ const TaskDetail = () => {
 
     setCancelError(null);
     await cancelTaskMutation.mutateAsync(normalizedReason);
-  };
-
-  const handleDisputeSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-
-    const normalizedComment = disputeComment.trim();
-    if (!normalizedComment) {
-      setDisputeError("Опишите причину спора.");
-      return;
-    }
-
-    setDisputeError(null);
-    await openDisputeMutation.mutateAsync(normalizedComment);
   };
 
   const handleReviewSubmit = async (event: FormEvent) => {
@@ -879,7 +850,7 @@ const TaskDetail = () => {
           description: completionConfirmedByMe
             ? "Вы уже подтвердили завершение со своей стороны. Когда исполнитель подтвердит результат, сделка закроется."
             : hasCounterpartConfirmed
-              ? "Исполнитель уже отметил работу как завершённую. Проверьте результат и подтвердите сделку, если всё в порядке."
+              ? "Исполнитель уже подтвердил выполнение. Проверьте результат и подтвердите сделку, если всё в порядке."
               : "Поддерживайте связь в чате и подтвердите выполнение, когда всё будет готово.",
         };
       }
@@ -892,10 +863,10 @@ const TaskDetail = () => {
               ? "Заказчик уже подтвердил выполнение"
               : "Задача у вас в работе",
           description: completionConfirmedByMe
-            ? "Вы уже сообщили о завершении. Теперь нужно дождаться подтверждения заказчика."
+            ? "Вы уже подтвердили сдачу работы. Теперь нужно дождаться подтверждения заказчика."
             : hasCounterpartConfirmed
               ? "Заказчик уже подтвердил выполнение со своей стороны. Подтвердите сдачу работы, чтобы закрыть сделку."
-              : "Когда работа будет готова, можно запросить закрытие сделки и подтвердить выполнение.",
+              : "Когда работа будет готова, подтвердите сдачу работы. После ответа заказчика сделка закроется.",
         };
       }
 
@@ -1332,15 +1303,27 @@ const TaskDetail = () => {
               <div className="card-surface space-y-3 p-5">
                 {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
                   <>
+                    {fixedTaskPrice !== null && (
+                      <button
+                        onClick={openTaskFixedPriceModal}
+                        className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+                      >
+                        Откликнуться за {fixedTaskPrice} ₽
+                      </button>
+                    )}
                     <button
                       onClick={() => setActionModal("service")}
-                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                      className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                        fixedTaskPrice !== null
+                          ? "border border-border text-foreground hover:bg-accent"
+                          : "bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
                     >
                       <Send className="w-4 h-4" />
                       Предложить, как выполнить
                     </button>
                     <button
-                      onClick={() => setActionModal("price")}
+                      onClick={openCustomPriceModal}
                       className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
                     >
                       Назвать свою цену
@@ -1391,23 +1374,6 @@ const TaskDetail = () => {
                 {canManageProgress && (
                   <>
                     <button
-                      onClick={() => completeRequestMutation.mutate()}
-                      className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={completeRequestMutation.isPending || isAwaitingOtherPartyConfirmation || hasCounterpartConfirmed || hasOpenDispute}
-                    >
-                      {completeRequestMutation.isPending
-                        ? "Отправляем..."
-                        : isAwaitingOtherPartyConfirmation
-                          ? "Ожидаем вторую сторону"
-                          : hasCounterpartConfirmed
-                            ? "Вторая сторона уже подтвердила"
-                            : hasOpenDispute
-                              ? "Сделка на паузе из-за спора"
-                          : isTaskOwner
-                            ? "Предложить закрыть сделку"
-                            : "Сообщить, что работа готова"}
-                    </button>
-                    <button
                       onClick={() => confirmCompletionMutation.mutate()}
                       className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
                       disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
@@ -1423,13 +1389,6 @@ const TaskDetail = () => {
                           : isTaskOwner
                             ? "Подтвердить, что всё выполнено"
                             : "Подтвердить сдачу работы"}
-                    </button>
-                    <button
-                      onClick={() => setActionModal("dispute-task")}
-                      className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={hasOpenDispute}
-                    >
-                      {hasOpenDispute ? "Спор уже открыт" : "Открыть спор"}
                     </button>
                   </>
                 )}
@@ -1448,7 +1407,7 @@ const TaskDetail = () => {
                   <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
                     {isTaskOwner
                       ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
-                      : "Вы уже сообщили о завершении работы. Сделка закроется после ответа заказчика."}
+                      : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
                   </div>
                 )}
 
@@ -1625,26 +1584,38 @@ const TaskDetail = () => {
       <Dialog open={actionModal === "price"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Предложить цену</DialogTitle>
-            <DialogDescription>Укажите вашу стоимость и при необходимости добавьте комментарий.</DialogDescription>
+            <DialogTitle>{priceModalMode === "task-fixed" ? "Отклик по цене заказчика" : "Предложить цену"}</DialogTitle>
+            <DialogDescription>
+              {priceModalMode === "task-fixed"
+                ? "Цена уже зафиксирована заказчиком. При желании добавьте комментарий к отклику."
+                : "Укажите вашу стоимость и при необходимости добавьте комментарий."}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handlePriceSubmit}>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Сумма</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                {priceModalMode === "task-fixed" ? "Зафиксированная цена" : "Сумма"}
+              </label>
               <div className="relative">
                 <input
                   type="number"
                   min={1}
                   value={priceValue}
+                  readOnly={priceModalMode === "task-fixed"}
                   onChange={(event) => {
                     setPriceValue(event.target.value);
                     if (priceError) setPriceError(null);
                   }}
-                  className="w-full h-10 px-3 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full h-10 px-3 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring read-only:cursor-default read-only:bg-secondary/60"
                   placeholder="0"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽</span>
               </div>
+              {priceModalMode === "task-fixed" && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Если хотите предложить другую сумму, используйте кнопку «Назвать свою цену».
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Комментарий</label>
@@ -1662,7 +1633,11 @@ const TaskDetail = () => {
               className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
               disabled={createOfferMutation.isPending}
             >
-              {createOfferMutation.isPending ? "Отправляем..." : "Отправить цену"}
+              {createOfferMutation.isPending
+                ? "Отправляем..."
+                : priceModalMode === "task-fixed"
+                  ? "Отправить отклик"
+                  : "Отправить цену"}
             </button>
           </form>
         </DialogContent>
@@ -2027,35 +2002,6 @@ const TaskDetail = () => {
               disabled={cancelTaskMutation.isPending}
             >
               {cancelTaskMutation.isPending ? "Отменяем..." : "Подтвердить отмену"}
-            </button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={actionModal === "dispute-task"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Открыть спор</DialogTitle>
-            <DialogDescription>Опишите проблему по выполнению задачи.</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-3" onSubmit={handleDisputeSubmit}>
-            <textarea
-              rows={4}
-              value={disputeComment}
-              onChange={(event) => {
-                setDisputeComment(event.target.value);
-                if (disputeError) setDisputeError(null);
-              }}
-              className="w-full px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Например: часть работы не выполнена"
-            />
-            {disputeError && <p className="text-xs text-destructive">{disputeError}</p>}
-            <button
-              type="submit"
-              className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-              disabled={openDisputeMutation.isPending}
-            >
-              {openDisputeMutation.isPending ? "Отправляем..." : "Открыть спор"}
             </button>
           </form>
         </DialogContent>

@@ -514,54 +514,6 @@ class TaskRepository:
             "confirmation_status": confirmation["status"] if confirmation is not None else "completed",
         }
 
-    def open_dispute(
-        self,
-        *,
-        task_assignment_id: int,
-        dispute_opened_by_user_id: int,
-        comment: str,
-    ) -> None:
-        existing = self.get_completion_confirmation(task_assignment_id=task_assignment_id)
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                if existing is None:
-                    cursor.execute(
-                        """
-                        INSERT INTO task_completion_confirmations (
-                            task_assignment_id,
-                            status,
-                            dispute_opened_by_user_id,
-                            dispute_comment
-                        )
-                        VALUES (%s, 'disputed', %s, %s)
-                        """,
-                        (task_assignment_id, dispute_opened_by_user_id, comment),
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        UPDATE task_completion_confirmations
-                        SET
-                            status = 'disputed',
-                            dispute_opened_by_user_id = %s,
-                            dispute_comment = %s,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE task_assignment_id = %s
-                        """,
-                        (dispute_opened_by_user_id, comment, task_assignment_id),
-                    )
-
-                cursor.execute(
-                    """
-                    UPDATE task_assignments
-                    SET status = 'disputed',
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (task_assignment_id,),
-                )
-            connection.commit()
-
     def _build_task_filters(self, filters: dict[str, Any]) -> tuple[str, list[Any]]:
         conditions: list[str] = []
         params: list[Any] = []

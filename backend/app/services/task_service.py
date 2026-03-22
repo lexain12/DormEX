@@ -184,22 +184,6 @@ class TaskService:
         self.user_repository.increment_completed_tasks_count([assignment["customer_id"], assignment["performer_id"]])
         return result
 
-    def open_dispute(self, *, task_id: int, comment: str, current_user: CurrentUserContext) -> dict:
-        assignment = self.task_repository.get_assignment_by_task(task_id)
-        if assignment is None:
-            raise DomainValidationError("Task assignment not found")
-        self._resolve_assignment_role(assignment, current_user.id)
-
-        self.task_repository.open_dispute(
-            task_assignment_id=assignment["id"],
-            dispute_opened_by_user_id=current_user.id,
-            comment=comment,
-        )
-        return {
-            "task_id": task_id,
-            "confirmation_status": "disputed",
-        }
-
     def _resolve_assignment_role(self, assignment: dict, user_id: int) -> str:
         if assignment["customer_id"] == user_id:
             return "customer"

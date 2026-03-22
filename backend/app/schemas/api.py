@@ -195,10 +195,6 @@ class CancelTaskRequest(BaseModel):
     reason: str = Field(min_length=2, max_length=2000)
 
 
-class OpenDisputeRequest(BaseModel):
-    comment: str = Field(min_length=2, max_length=2000)
-
-
 class ChatMessageRequest(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
 

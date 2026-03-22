@@ -20,7 +20,6 @@ from ..schemas.api import (
     EmailCodeRequest,
     EmailCodeVerifyRequest,
     LoginRequest,
-    OpenDisputeRequest,
     RefreshTokenRequest,
     RegisterRequest,
     UpdateMeRequest,
@@ -432,29 +431,12 @@ def mark_chat_read(
     return platform_service.mark_chat_read(chat_id, current_user)
 
 
-@router.post("/tasks/{task_id}/complete-request", tags=["tasks"])
-def request_task_completion(
-    task_id: int,
-    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-) -> dict:
-    return platform_service.request_task_completion(task_id, current_user)
-
-
 @router.post("/tasks/{task_id}/confirm-completion", tags=["tasks"])
 def confirm_task_completion(
     task_id: int,
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
 ) -> dict:
     return platform_service.confirm_task_completion(task_id, current_user)
-
-
-@router.post("/tasks/{task_id}/open-dispute", tags=["tasks"])
-def open_task_dispute(
-    task_id: int,
-    payload: OpenDisputeRequest,
-    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
-) -> dict:
-    return platform_service.open_task_dispute(task_id, current_user, payload.comment)
 
 
 @router.get("/tasks/{task_id}/reviews")
