@@ -1,4 +1,3 @@
-import os
 from dataclasses import dataclass
 
 from ..core.auth_tokens import decode_access_token, extract_bearer_token
@@ -20,25 +19,8 @@ class CurrentUserContext:
 class CurrentUserService:
     def __init__(self, user_repository: UserRepository | None = None) -> None:
         self.user_repository = user_repository or UserRepository()
-        self.default_user_id = os.getenv("DEFAULT_USER_ID", "1")
 
-    def resolve_current_user(
-        self,
-        raw_authorization: str | None,
-        raw_user_id: str | None,
-    ) -> CurrentUserContext:
-        bearer_token = extract_bearer_token(raw_authorization)
-
-        if bearer_token:
-            user_id = decode_access_token(bearer_token)
-        else:
-            user_id_value = raw_user_id or self.default_user_id
-
-            try:
-                user_id = int(user_id_value)
-            except (TypeError, ValueError) as error:
-                raise DomainValidationError("Invalid current user identifier") from error
-
+    def _build_current_user_context(self, user_id: int) -> CurrentUserContext:
         user = self.user_repository.get_user_context(user_id)
         if user is None:
             raise DomainValidationError("Current user not found")
@@ -55,8 +37,16 @@ class CurrentUserService:
             is_blocked=user["is_blocked"],
         )
 
-    def resolve_authenticated_user(self, raw_authorization: str | None) -> CurrentUserContext:
+    def resolve_current_user(
+        self,
+        raw_authorization: str | None,
+    ) -> CurrentUserContext:
         bearer_token = extract_bearer_token(raw_authorization)
         if not bearer_token:
             raise AuthenticationError("Authorization header with Bearer token is required")
-        return self.resolve_current_user(raw_authorization, None)
+
+        user_id = decode_access_token(bearer_token)
+        return self._build_current_user_context(user_id)
+
+    def resolve_authenticated_user(self, raw_authorization: str | None) -> CurrentUserContext:
+        return self.resolve_current_user(raw_authorization)

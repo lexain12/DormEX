@@ -1,4 +1,4 @@
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import DomainValidationError, ForbiddenError
 from ..repositories.notification_repository import NotificationRepository
 from ..repositories.report_repository import ReportRepository
 from .current_user_service import CurrentUserContext
@@ -47,6 +47,14 @@ class ReportService:
         )
         return report
 
+    def delete_all_reports_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.report_repository.delete_all_reports()
+
     def _ensure_moderator(self, current_user: CurrentUserContext) -> None:
-        if current_user.role not in ("moderator", "admin"):
-            raise DomainValidationError("Moderator access required")
+        if current_user.role != "admin":
+            raise DomainValidationError("Admin access required")
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

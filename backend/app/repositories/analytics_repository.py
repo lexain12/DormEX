@@ -82,3 +82,7 @@ class AnalyticsRepository:
                 for row in histogram
             ],
         }
+
+    def delete_all_analytics(self) -> None:
+        # Analytics are derived from tasks, offers, etc., so no direct delete needed
+        pass

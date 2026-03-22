@@ -1,4 +1,4 @@
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import DomainValidationError, ForbiddenError
 from ..repositories.chat_repository import ChatRepository
 from ..repositories.notification_repository import NotificationRepository
 from .current_user_service import CurrentUserContext
@@ -62,3 +62,11 @@ class ChatService:
     def _ensure_chat_participant(self, chat: dict, user_id: int) -> None:
         if user_id not in (chat["customer"]["id"], chat["performer"]["id"]):
             raise DomainValidationError("Access denied to chat")
+
+    def delete_all_chats_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.chat_repository.delete_all_chats()
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

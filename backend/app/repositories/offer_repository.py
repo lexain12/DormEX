@@ -468,3 +468,25 @@ class OfferRepository:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+
+    def delete_all_offers(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM reviews")
+                cursor.execute("DELETE FROM task_assignments")
+                cursor.execute(
+                    """
+                    UPDATE tasks
+                    SET
+                        accepted_offer_id = NULL,
+                        offers_count = 0,
+                        status = CASE
+                            WHEN status IN ('offers', 'in_progress') THEN 'open'
+                            ELSE status
+                        END,
+                        updated_at = CURRENT_TIMESTAMP
+                    """
+                )
+                cursor.execute("DELETE FROM offer_counter_offers")
+                cursor.execute("DELETE FROM task_offers")
+            connection.commit()

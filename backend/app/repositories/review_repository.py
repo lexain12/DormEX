@@ -178,3 +178,9 @@ class ReviewRepository:
                 row = cursor.fetchone()
             connection.commit()
         return row
+
+    def delete_all_reviews(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM reviews")
+            connection.commit()

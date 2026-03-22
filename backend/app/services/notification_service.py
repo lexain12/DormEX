@@ -1,5 +1,6 @@
 from fastapi import Request
 
+from ..core.exceptions import ForbiddenError
 from ..repositories.notification_repository import NotificationRepository
 from .current_user_service import CurrentUserContext
 
@@ -52,3 +53,11 @@ class NotificationService:
 
     def latest_notifications(self, *, current_user: CurrentUserContext, after_id: int | None = None) -> list[dict]:
         return self.notification_repository.list_latest_notifications(user_id=current_user.id, after_id=after_id)
+
+    def delete_all_notifications_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.notification_repository.delete_all_notifications()
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")
