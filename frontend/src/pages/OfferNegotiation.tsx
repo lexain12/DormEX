@@ -6,10 +6,11 @@ import { Link, useParams } from "react-router-dom";
 import { queryKeys } from "@/api/query-keys";
 import { offersService } from "@/api/services/offers";
 import { tasksService } from "@/api/services/tasks";
-import type { ApiPaymentType } from "@/api/types";
+import type { ApiPaymentType, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 import { CreateRequestModal } from "@/components/CreateRequestModal";
 import { TopNav } from "@/components/TopNav";
 import { useAuth } from "@/context/auth-context";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { toast } from "@/hooks/use-toast";
 import { PAYMENT_LABELS, STATUS_LABELS } from "@/lib/data";
 
@@ -51,18 +52,57 @@ export default function OfferNegotiation() {
     queryKey: queryKeys.task(numericTaskId),
     queryFn: () => tasksService.getById(numericTaskId),
     enabled: hasValidParams,
+    refetchInterval: hasValidParams ? 60_000 : false,
   });
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
     queryFn: () => offersService.listByTask(numericTaskId),
     enabled: hasValidParams,
+    refetchInterval: hasValidParams ? 60_000 : false,
   });
 
   const counterOffersQuery = useQuery({
     queryKey: queryKeys.counterOffers(numericOfferId),
     queryFn: () => offersService.listCounterOffers(numericOfferId),
     enabled: hasValidParams,
+    refetchInterval: hasValidParams ? 60_000 : false,
+  });
+
+  useRealtimeChannel({
+    enabled: hasValidParams,
+    path: `/ws/tasks/${numericTaskId}`,
+    onMessage: (message: { task?: TaskDetailDto; offers?: OfferDto[] }) => {
+      if (message.task) {
+        queryClient.setQueryData(queryKeys.task(numericTaskId), message.task);
+      }
+
+      if (message.offers) {
+        queryClient.setQueryData(queryKeys.offers(numericTaskId), message.offers);
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.offers(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+      ]);
+    },
+  });
+
+  useRealtimeChannel({
+    enabled: hasValidParams,
+    path: `/ws/offers/${numericOfferId}/counter-offers`,
+    onMessage: (message: { items?: CounterOfferDto[] }) => {
+      if (message.items) {
+        queryClient.setQueryData(queryKeys.counterOffers(numericOfferId), message.items);
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.counterOffers(numericOfferId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.offers(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+      ]);
+    },
   });
 
   const offer = useMemo(

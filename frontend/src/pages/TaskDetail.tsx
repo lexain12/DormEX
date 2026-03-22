@@ -13,6 +13,7 @@ import { CreateRequestModal } from "@/components/CreateRequestModal";
 import { TopNav } from "@/components/TopNav";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/context/auth-context";
+import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
 import { toast } from "@/hooks/use-toast";
 import {
   PAYMENT_LABELS,
@@ -20,7 +21,7 @@ import {
   URGENCY_LABELS,
 } from "@/lib/data";
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
-import type { ApiPaymentType } from "@/api/types";
+import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 
 type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | "review" | null;
 
@@ -83,24 +84,28 @@ const TaskDetail = () => {
     queryKey: queryKeys.task(numericTaskId),
     queryFn: () => tasksService.getById(numericTaskId),
     enabled: hasValidTaskId,
+    refetchInterval: hasValidTaskId ? 60_000 : false,
   });
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
     queryFn: () => offersService.listByTask(numericTaskId),
     enabled: taskQuery.isSuccess,
+    refetchInterval: taskQuery.isSuccess ? 60_000 : false,
   });
 
   const chatsQuery = useQuery({
     queryKey: queryKeys.chats,
     queryFn: chatsService.list,
     enabled: taskQuery.isSuccess,
+    refetchInterval: taskQuery.isSuccess ? 60_000 : false,
   });
 
   const counterOffersQuery = useQuery({
     queryKey: queryKeys.counterOffers(selectedOfferForCounter ?? 0),
     queryFn: () => offersService.listCounterOffers(selectedOfferForCounter as number),
     enabled: actionModal === "counter" && Boolean(selectedOfferForCounter),
+    refetchInterval: actionModal === "counter" && Boolean(selectedOfferForCounter) ? 60_000 : false,
   });
 
   const analyticsCategory = taskQuery.data?.category ?? null;
@@ -125,7 +130,68 @@ const TaskDetail = () => {
     queryKey: queryKeys.chatMessages(chatId ?? 0),
     queryFn: () => chatsService.listMessages(chatId as number, { limit: 50 }),
     enabled: actionModal === "message" && Boolean(chatId),
-    refetchInterval: actionModal === "message" ? 5000 : false,
+    refetchInterval: actionModal === "message" ? 15_000 : false,
+  });
+
+  useRealtimeChannel({
+    enabled: hasValidTaskId,
+    path: `/ws/tasks/${numericTaskId}`,
+    onMessage: (message: { task?: TaskDetailDto; offers?: OfferDto[] }) => {
+      if (message.task) {
+        queryClient.setQueryData(queryKeys.task(numericTaskId), message.task);
+      }
+
+      if (message.offers) {
+        queryClient.setQueryData(queryKeys.offers(numericTaskId), message.offers);
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.offers(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.chats, type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+      ]);
+    },
+  });
+
+  useRealtimeChannel({
+    enabled: actionModal === "counter" && Boolean(selectedOfferForCounter),
+    path: `/ws/offers/${selectedOfferForCounter ?? 0}/counter-offers`,
+    onMessage: (message: { items?: CounterOfferDto[] }) => {
+      if (!selectedOfferForCounter) {
+        return;
+      }
+
+      if (message.items) {
+        queryClient.setQueryData(queryKeys.counterOffers(selectedOfferForCounter), message.items);
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.counterOffers(selectedOfferForCounter), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.offers(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+      ]);
+    },
+  });
+
+  useRealtimeChannel({
+    enabled: actionModal === "message" && Boolean(chatId),
+    path: `/ws/chats/${chatId ?? 0}`,
+    onMessage: (message: { items?: ChatMessageDto[] }) => {
+      if (!chatId) {
+        return;
+      }
+
+      if (message.items) {
+        queryClient.setQueryData(queryKeys.chatMessages(chatId), message.items);
+      }
+
+      void Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.chatMessages(chatId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.chats, type: "active" }),
+      ]);
+      void chatsService.markRead(chatId).catch(() => undefined);
+    },
   });
 
   useEffect(() => {
@@ -353,7 +419,10 @@ const TaskDetail = () => {
   const completeRequestMutation = useMutation({
     mutationFn: () => tasksService.completeRequest(numericTaskId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+      ]);
       toast({
         title: "Запрос на завершение отправлен",
         description: "Ожидаем подтверждение второй стороны.",
@@ -372,8 +441,9 @@ const TaskDetail = () => {
     mutationFn: () => tasksService.confirmCompletion(numericTaskId),
     onSuccess: async (response) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
-        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["user"], type: "active" }),
       ]);
       if (response?.status === "completed") {
         toast({
@@ -400,7 +470,10 @@ const TaskDetail = () => {
   const openDisputeMutation = useMutation({
     mutationFn: (comment: string) => tasksService.openDispute(numericTaskId, comment),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
+      ]);
       toast({
         title: "Спор открыт",
         description: "Заявка отправлена в модерацию.",
@@ -418,12 +491,12 @@ const TaskDetail = () => {
     mutationFn: (payload: { rating: number; comment: string | null }) => tasksService.createReview(numericTaskId, payload),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.task(numericTaskId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.taskReviews(numericTaskId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.userProfile(user?.id ?? 0) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.userReviews(user?.id ?? 0) }),
-        queryClient.invalidateQueries({ queryKey: ["user"] }),
-        queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.taskReviews(numericTaskId), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.userProfile(user?.id ?? 0), type: "active" }),
+        queryClient.refetchQueries({ queryKey: queryKeys.userReviews(user?.id ?? 0), type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["user"], type: "active" }),
+        queryClient.refetchQueries({ queryKey: ["notifications"], type: "active" }),
       ]);
       toast({
         title: "Отзыв отправлен",
@@ -678,6 +751,17 @@ const TaskDetail = () => {
   const canManageProgress = Boolean((isTaskOwner || isAssignedPerformer) && task?.status === "progress");
   const completionStatus = taskQuery.data?.completion_confirmation_status ?? null;
   const completionConfirmedByMe = Boolean(taskQuery.data?.completion_confirmed_by_me);
+  const counterpartConfirmationStatus = isTaskOwner
+    ? "performer_confirmed"
+    : isAssignedPerformer
+      ? "customer_confirmed"
+      : null;
+  const hasCounterpartConfirmed = Boolean(
+    task?.status === "progress"
+    && counterpartConfirmationStatus
+    && completionStatus === counterpartConfirmationStatus,
+  );
+  const hasOpenDispute = completionStatus === "disputed";
   const isAwaitingOtherPartyConfirmation = task?.status === "progress" && completionConfirmedByMe && completionStatus !== "completed";
   const reviewSummary = taskQuery.data?.review_summary ?? null;
   const ownPendingOffer = offersQuery.data?.find((offer) => offer.performer?.id === user?.id && offer.status === "pending") ?? null;
@@ -757,21 +841,40 @@ const TaskDetail = () => {
     }
 
     if (task.status === "progress") {
+      if (hasOpenDispute) {
+        return {
+          title: "По задаче открыт спор",
+          description: "Сделка приостановлена до урегулирования спорной ситуации между сторонами.",
+        };
+      }
+
       if (isTaskOwner) {
         return {
-          title: completionConfirmedByMe ? "Ждём подтверждение исполнителя" : "Работа в процессе",
+          title: completionConfirmedByMe
+            ? "Ждём подтверждение исполнителя"
+            : hasCounterpartConfirmed
+              ? "Исполнитель уже подтвердил выполнение"
+              : "Работа в процессе",
           description: completionConfirmedByMe
             ? "Вы уже подтвердили завершение со своей стороны. Когда исполнитель подтвердит результат, сделка закроется."
-            : "Поддерживайте связь в чате и подтвердите выполнение, когда всё будет готово.",
+            : hasCounterpartConfirmed
+              ? "Исполнитель уже отметил работу как завершённую. Проверьте результат и подтвердите сделку, если всё в порядке."
+              : "Поддерживайте связь в чате и подтвердите выполнение, когда всё будет готово.",
         };
       }
 
       if (isAssignedPerformer) {
         return {
-          title: completionConfirmedByMe ? "Ждём подтверждение заказчика" : "Задача у вас в работе",
+          title: completionConfirmedByMe
+            ? "Ждём подтверждение заказчика"
+            : hasCounterpartConfirmed
+              ? "Заказчик уже подтвердил выполнение"
+              : "Задача у вас в работе",
           description: completionConfirmedByMe
             ? "Вы уже сообщили о завершении. Теперь нужно дождаться подтверждения заказчика."
-            : "Когда работа будет готова, можно запросить закрытие сделки и подтвердить выполнение.",
+            : hasCounterpartConfirmed
+              ? "Заказчик уже подтвердил выполнение со своей стороны. Подтвердите сдачу работы, чтобы закрыть сделку."
+              : "Когда работа будет готова, можно запросить закрытие сделки и подтвердить выполнение.",
         };
       }
 
@@ -803,6 +906,8 @@ const TaskDetail = () => {
     };
   }, [
     completionConfirmedByMe,
+    hasCounterpartConfirmed,
+    hasOpenDispute,
     isAssignedPerformer,
     isTaskOwner,
     ownPendingOffer,
@@ -1133,12 +1238,16 @@ const TaskDetail = () => {
                     <button
                       onClick={() => completeRequestMutation.mutate()}
                       className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={completeRequestMutation.isPending || isAwaitingOtherPartyConfirmation}
+                      disabled={completeRequestMutation.isPending || isAwaitingOtherPartyConfirmation || hasCounterpartConfirmed || hasOpenDispute}
                     >
                       {completeRequestMutation.isPending
                         ? "Отправляем..."
                         : isAwaitingOtherPartyConfirmation
                           ? "Ожидаем вторую сторону"
+                          : hasCounterpartConfirmed
+                            ? "Вторая сторона уже подтвердила"
+                            : hasOpenDispute
+                              ? "Сделка на паузе из-за спора"
                           : isTaskOwner
                             ? "Предложить закрыть сделку"
                             : "Сообщить, что работа готова"}
@@ -1146,12 +1255,16 @@ const TaskDetail = () => {
                     <button
                       onClick={() => confirmCompletionMutation.mutate()}
                       className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation}
+                      disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
                     >
                       {confirmCompletionMutation.isPending
                         ? "Подтверждаем..."
                         : isAwaitingOtherPartyConfirmation
                           ? "Подтверждение отправлено"
+                          : hasCounterpartConfirmed
+                            ? "Подтвердить и закрыть сделку"
+                            : hasOpenDispute
+                              ? "Спор уже открыт"
                           : isTaskOwner
                             ? "Подтвердить, что всё выполнено"
                             : "Подтвердить сдачу работы"}
@@ -1159,8 +1272,9 @@ const TaskDetail = () => {
                     <button
                       onClick={() => setActionModal("dispute-task")}
                       className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors"
+                      disabled={hasOpenDispute}
                     >
-                      Открыть спор
+                      {hasOpenDispute ? "Спор уже открыт" : "Открыть спор"}
                     </button>
                   </>
                 )}
@@ -1180,6 +1294,20 @@ const TaskDetail = () => {
                     {isTaskOwner
                       ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
                       : "Вы уже сообщили о завершении работы. Сделка закроется после ответа заказчика."}
+                  </div>
+                )}
+
+                {hasCounterpartConfirmed && !completionConfirmedByMe && !hasOpenDispute && (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    {isTaskOwner
+                      ? "Исполнитель уже подтвердил выполнение. Если результат вас устраивает, подтвердите сделку и она сразу закроется."
+                      : "Заказчик уже подтвердил выполнение. Подтвердите сдачу работы, чтобы закрыть сделку."}
+                  </div>
+                )}
+
+                {hasOpenDispute && (
+                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+                    По задаче открыт спор. До его урегулирования подтверждение завершения недоступно.
                   </div>
                 )}
 
