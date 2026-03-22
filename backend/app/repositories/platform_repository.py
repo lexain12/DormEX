@@ -7,7 +7,10 @@ from uuid import uuid4
 
 from ..core.auth_tokens import hash_refresh_token, hash_verification_code
 from ..core.database import get_connection
-from ..core.exceptions import DomainValidationError, ForbiddenError, TooManyRequestsError
+from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError, TooManyRequestsError
+from ..core.security import hash_password, verify_password
+from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError, TooManyRequestsError
+from ..core.security import hash_password, verify_password
 
 
 UTC = timezone.utc
@@ -27,6 +30,10 @@ class PlatformRepository:
         self.email_code_ttl_sec = int(os.getenv("EMAIL_CODE_TTL_SEC", "600"))
         self.email_code_resend_interval_sec = int(os.getenv("EMAIL_CODE_RESEND_INTERVAL_SEC", "60"))
         self.auth_allow_any_email_domain = _parse_bool(os.getenv("AUTH_ALLOW_ANY_EMAIL_DOMAIN"), default=False)
+        self.admin_email = (os.getenv("ADMIN_EMAIL", "admin@campus.test") or "").strip().lower()
+        self.admin_username = (os.getenv("ADMIN_USERNAME", "admin") or "").strip().lower()
+        self.admin_password = (os.getenv("ADMIN_PASSWORD", "123") or "").strip()
+        self.admin_full_name = (os.getenv("ADMIN_FULL_NAME", "Администратор DormEX") or "").strip()
 
     def ensure_seed_data(self) -> None:
         with get_connection() as connection:
@@ -40,9 +47,11 @@ class PlatformRepository:
                         name = EXCLUDED.name,
                         slug = EXCLUDED.slug,
                         is_active = TRUE
+                    RETURNING id
                     """,
                     ("МФТИ", "mipt", self.default_university_domain),
                 )
+                default_university_id = cursor.fetchone()["id"]
 
                 cursor.execute(
                     """
@@ -59,36 +68,30 @@ class PlatformRepository:
                 )
                 university_id = cursor.fetchone()["id"]
 
-                dormitory_ids = {}
-                for name, code in (
-                    ("Общежитие №1", "D1"),
-                    ("Общежитие №2", "D2"),
-                    ("Общежитие №3", "D3"),
-                ):
-                    cursor.execute(
-                        """
-                        INSERT INTO dormitories (university_id, name, code, address)
-                        VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (university_id, name)
-                        DO UPDATE SET
-                            code = EXCLUDED.code,
-                            address = EXCLUDED.address
-                        RETURNING id
-                        """,
-                        (university_id, name, code, f"Кампус, {name}"),
-                    )
-                    dormitory_ids[name] = cursor.fetchone()["id"]
+                self._ensure_dormitories(
+                    cursor,
+                    university_id=default_university_id,
+                    address_prefix="МФТИ кампус",
+                )
+                dormitory_ids = self._ensure_dormitories(
+                    cursor,
+                    university_id=university_id,
+                    address_prefix="Кампус",
+                )
 
                 demo_users = {
                     "alexey@campus.test": {
+                        "username": "alexey",
                         "full_name": "Алексей Михайлов",
                         "dormitory_id": dormitory_ids["Общежитие №1"],
                     },
                     "maria@campus.test": {
+                        "username": "maria",
                         "full_name": "Мария Петрова",
                         "dormitory_id": dormitory_ids["Общежитие №2"],
                     },
                     "nikita@campus.test": {
+                        "username": "nikita",
                         "full_name": "Никита Смирнов",
                         "dormitory_id": dormitory_ids["Общежитие №3"],
                     },
@@ -101,16 +104,18 @@ class PlatformRepository:
                         INSERT INTO users (
                             email,
                             email_verified_at,
+                            username,
                             full_name,
                             role,
                             university_id,
                             dormitory_id,
                             bio
                         )
-                        VALUES (%s, CURRENT_TIMESTAMP, %s, 'student', %s, %s, %s)
+                        VALUES (%s, CURRENT_TIMESTAMP, %s, %s, 'student', %s, %s, %s)
                         ON CONFLICT (email)
                         DO UPDATE SET
                             email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP),
+                            username = COALESCE(users.username, EXCLUDED.username),
                             university_id = EXCLUDED.university_id,
                             dormitory_id = COALESCE(users.dormitory_id, EXCLUDED.dormitory_id),
                             bio = COALESCE(users.bio, EXCLUDED.bio),
@@ -119,6 +124,7 @@ class PlatformRepository:
                         """,
                         (
                             email,
+                            data["username"],
                             data["full_name"],
                             university_id,
                             data["dormitory_id"],
@@ -132,6 +138,43 @@ class PlatformRepository:
 
                 if tasks_total == 0:
                     self._seed_demo_tasks(cursor, university_id, dormitory_ids, demo_user_ids)
+
+                admin_university_id = default_university_id
+                admin_domain = self.admin_email.split("@")[-1] if "@" in self.admin_email else ""
+                if admin_domain == self.demo_email_domain or (admin_domain and self.auth_allow_any_email_domain):
+                    admin_university_id = university_id
+
+                cursor.execute(
+                    """
+                    INSERT INTO users (
+                        email,
+                        email_verified_at,
+                        username,
+                        password_hash,
+                        full_name,
+                        role,
+                        university_id,
+                        bio
+                    )
+                    VALUES (%s, CURRENT_TIMESTAMP, %s, %s, %s, 'admin', %s, %s)
+                    ON CONFLICT (email)
+                    DO UPDATE SET
+                        username = EXCLUDED.username,
+                        password_hash = EXCLUDED.password_hash,
+                        full_name = EXCLUDED.full_name,
+                        role = 'admin',
+                        university_id = EXCLUDED.university_id,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        self.admin_email,
+                        self.admin_username,
+                        hash_password(self.admin_password),
+                        self.admin_full_name or "Администратор DormEX",
+                        admin_university_id,
+                        "Системный административный аккаунт",
+                    ),
+                )
 
                 self._refresh_user_metrics(
                     cursor,
@@ -331,6 +374,534 @@ class PlatformRepository:
 
         return self.get_me(user_id)
 
+    def verify_credentials_and_get_user(self, username: str, password: str) -> dict[str, Any]:
+        normalized_username = username.lower().strip()
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, password_hash, is_blocked
+                    FROM users
+                    WHERE username = %s
+                    """,
+                    (normalized_username,),
+                )
+                user_row = cursor.fetchone()
+
+        if user_row is None or not verify_password(password, user_row["password_hash"]):
+            raise AuthenticationError("Неверный логин или пароль")
+
+        if user_row["is_blocked"]:
+            raise AuthenticationError("Пользователь заблокирован")
+
+        return self.get_me(user_row["id"])
+
+    def register_user(
+        self,
+        *,
+        email: str,
+        username: str,
+        password: str,
+        dormitory_id: int,
+        full_name: str | None,
+    ) -> dict[str, Any]:
+        normalized_email = email.lower().strip()
+        normalized_username = username.lower().strip()
+        normalized_full_name = (full_name or "").strip()
+
+        university = self.get_university_by_email(normalized_email)
+        if university is None:
+            raise DomainValidationError("Этот email-домен не привязан к университету")
+
+        fallback_name = normalized_username.replace(".", " ").replace("_", " ").replace("-", " ").strip().title()
+        final_full_name = normalized_full_name or fallback_name or "Новый пользователь"
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM users
+                    WHERE email = %s
+                    """,
+                    (normalized_email,),
+                )
+                if cursor.fetchone() is not None:
+                    raise DomainValidationError("Пользователь с таким email уже существует")
+
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM users
+                    WHERE username = %s
+                    """,
+                    (normalized_username,),
+                )
+                if cursor.fetchone() is not None:
+                    raise DomainValidationError("Логин уже занят")
+
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM dormitories
+                    WHERE id = %s
+                      AND university_id = %s
+                      AND is_active = TRUE
+                    """,
+                    (dormitory_id, university["id"]),
+                )
+                if cursor.fetchone() is None:
+                    raise DomainValidationError("Выберите общежитие из списка")
+
+                cursor.execute(
+                    """
+                    INSERT INTO users (
+                        email,
+                        username,
+                        password_hash,
+                        full_name,
+                        role,
+                        university_id,
+                        dormitory_id
+                    )
+                    VALUES (%s, %s, %s, %s, 'student', %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        normalized_email,
+                        normalized_username,
+                        hash_password(password),
+                        final_full_name,
+                        university["id"],
+                        dormitory_id,
+                    ),
+                )
+                user_row = cursor.fetchone()
+            connection.commit()
+
+        if user_row is None:
+            raise RuntimeError("Не удалось создать пользователя")
+
+        return self.get_me(user_row["id"])
+
+    def create_admin_account(
+        self,
+        *,
+        email: str,
+        username: str,
+        password: str,
+        full_name: str | None,
+    ) -> dict[str, Any]:
+        normalized_email = email.lower().strip()
+        normalized_username = username.lower().strip()
+        normalized_full_name = (full_name or "").strip()
+
+        university = self.get_university_by_email(normalized_email)
+        if university is None:
+            raise DomainValidationError("Этот email-домен не привязан к университету")
+
+        fallback_name = normalized_username.replace(".", " ").replace("_", " ").replace("-", " ").strip().title()
+        final_full_name = normalized_full_name or fallback_name or "Администратор"
+
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM users
+                    WHERE email = %s
+                    """,
+                    (normalized_email,),
+                )
+                if cursor.fetchone() is not None:
+                    raise DomainValidationError("Пользователь с таким email уже существует")
+
+                cursor.execute(
+                    """
+                    SELECT 1
+                    FROM users
+                    WHERE username = %s
+                    """,
+                    (normalized_username,),
+                )
+                if cursor.fetchone() is not None:
+                    raise DomainValidationError("Логин уже занят")
+
+                cursor.execute(
+                    """
+                    INSERT INTO users (
+                        email,
+                        email_verified_at,
+                        username,
+                        password_hash,
+                        full_name,
+                        role,
+                        university_id
+                    )
+                    VALUES (%s, CURRENT_TIMESTAMP, %s, %s, %s, 'admin', %s)
+                    RETURNING id
+                    """,
+                    (
+                        normalized_email,
+                        normalized_username,
+                        hash_password(password),
+                        final_full_name,
+                        university["id"],
+                    ),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        if row is None:
+            raise RuntimeError("Не удалось создать административный аккаунт")
+
+        return self.get_me(row["id"])
+
+    def delete_user_completely(self, user_id: int) -> dict[str, Any]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, email, role, university_id
+                    FROM users
+                    WHERE id = %s
+                    FOR UPDATE
+                    """,
+                    (user_id,),
+                )
+                user = cursor.fetchone()
+                if user is None:
+                    raise DomainValidationError("Пользователь не найден")
+
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM tasks
+                    WHERE customer_id = %s
+                    """,
+                    (user_id,),
+                )
+                own_task_ids = [row["id"] for row in cursor.fetchall()]
+
+                own_task_offer_ids: list[int] = []
+                if own_task_ids:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM task_offers
+                        WHERE task_id = ANY(%s)
+                        """,
+                        (own_task_ids,),
+                    )
+                    own_task_offer_ids = [row["id"] for row in cursor.fetchall()]
+
+                cursor.execute(
+                    """
+                    SELECT id, task_id
+                    FROM task_offers
+                    WHERE performer_id = %s
+                    """,
+                    (user_id,),
+                )
+                performer_offer_rows = list(cursor.fetchall())
+                performer_offer_ids = [row["id"] for row in performer_offer_rows]
+                performer_task_ids = [row["task_id"] for row in performer_offer_rows]
+
+                offer_ids_to_delete = list(dict.fromkeys(own_task_offer_ids + performer_offer_ids))
+                task_ids_to_reset = list(
+                    dict.fromkeys(
+                        task_id
+                        for task_id in performer_task_ids
+                        if task_id not in own_task_ids
+                    )
+                )
+
+                assignment_ids_to_delete: list[int] = []
+                assignment_task_ids: list[int] = []
+                assignment_params: list[Any] = [user_id, user_id]
+                assignment_conditions = ["customer_id = %s", "performer_id = %s"]
+                if own_task_ids:
+                    assignment_conditions.append("task_id = ANY(%s)")
+                    assignment_params.append(own_task_ids)
+                if offer_ids_to_delete:
+                    assignment_conditions.append("offer_id = ANY(%s)")
+                    assignment_params.append(offer_ids_to_delete)
+
+                cursor.execute(
+                    f"""
+                    SELECT id, task_id
+                    FROM task_assignments
+                    WHERE {" OR ".join(assignment_conditions)}
+                    """,
+                    tuple(assignment_params),
+                )
+                for row in cursor.fetchall():
+                    assignment_ids_to_delete.append(row["id"])
+                    if row["task_id"] not in own_task_ids:
+                        assignment_task_ids.append(row["task_id"])
+
+                task_ids_to_reset = list(dict.fromkeys(task_ids_to_reset + assignment_task_ids))
+
+                chat_params: list[Any] = [user_id, user_id]
+                chat_conditions = ["customer_id = %s", "performer_id = %s"]
+                if own_task_ids:
+                    chat_conditions.append("task_id = ANY(%s)")
+                    chat_params.append(own_task_ids)
+
+                cursor.execute(
+                    f"""
+                    SELECT id
+                    FROM task_chats
+                    WHERE {" OR ".join(chat_conditions)}
+                    """,
+                    tuple(chat_params),
+                )
+                chat_ids = [row["id"] for row in cursor.fetchall()]
+
+                chat_message_ids: list[int] = []
+                if chat_ids:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM chat_messages
+                        WHERE chat_id = ANY(%s)
+                        """,
+                        (chat_ids,),
+                    )
+                    chat_message_ids = [row["id"] for row in cursor.fetchall()]
+
+                review_params: list[Any] = [user_id, user_id]
+                review_conditions = ["author_id = %s", "target_user_id = %s"]
+                if own_task_ids:
+                    review_conditions.append("task_id = ANY(%s)")
+                    review_params.append(own_task_ids)
+                if assignment_ids_to_delete:
+                    review_conditions.append("task_assignment_id = ANY(%s)")
+                    review_params.append(assignment_ids_to_delete)
+
+                cursor.execute(
+                    f"""
+                    SELECT id
+                    FROM reviews
+                    WHERE {" OR ".join(review_conditions)}
+                    """,
+                    tuple(review_params),
+                )
+                review_ids = [row["id"] for row in cursor.fetchall()]
+
+                if offer_ids_to_delete:
+                    cursor.execute(
+                        """
+                        UPDATE tasks
+                        SET accepted_offer_id = NULL,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE accepted_offer_id = ANY(%s)
+                        """,
+                        (offer_ids_to_delete,),
+                    )
+
+                report_conditions = ["reporter_id = %s", "resolved_by_user_id = %s", "(target_type = 'user' AND target_id = %s)"]
+                report_params: list[Any] = [user_id, user_id, user_id]
+                if own_task_ids:
+                    report_conditions.append("(target_type = 'task' AND target_id = ANY(%s))")
+                    report_params.append(own_task_ids)
+                if review_ids:
+                    report_conditions.append("(target_type = 'review' AND target_id = ANY(%s))")
+                    report_params.append(review_ids)
+                if chat_message_ids:
+                    report_conditions.append("(target_type = 'chat_message' AND target_id = ANY(%s))")
+                    report_params.append(chat_message_ids)
+                cursor.execute(
+                    f"""
+                    DELETE FROM reports
+                    WHERE {" OR ".join(report_conditions)}
+                    """,
+                    tuple(report_params),
+                )
+
+                audit_conditions = ["actor_user_id = %s", "(entity_type = 'user' AND entity_id = %s)"]
+                audit_params: list[Any] = [user_id, user_id]
+                if own_task_ids:
+                    audit_conditions.append("(entity_type = 'task' AND entity_id = ANY(%s))")
+                    audit_params.append(own_task_ids)
+                if review_ids:
+                    audit_conditions.append("(entity_type = 'review' AND entity_id = ANY(%s))")
+                    audit_params.append(review_ids)
+                if chat_message_ids:
+                    audit_conditions.append("(entity_type = 'chat_message' AND entity_id = ANY(%s))")
+                    audit_params.append(chat_message_ids)
+                cursor.execute(
+                    f"""
+                    DELETE FROM audit_logs
+                    WHERE {" OR ".join(audit_conditions)}
+                    """,
+                    tuple(audit_params),
+                )
+
+                notification_conditions = ["user_id = %s", "(entity_type = 'user' AND entity_id = %s)"]
+                notification_params: list[Any] = [user_id, user_id]
+                if own_task_ids:
+                    notification_conditions.append("(entity_type = 'task' AND entity_id = ANY(%s))")
+                    notification_params.append(own_task_ids)
+                if offer_ids_to_delete:
+                    notification_conditions.append("(entity_type = 'offer' AND entity_id = ANY(%s))")
+                    notification_params.append(offer_ids_to_delete)
+                if review_ids:
+                    notification_conditions.append("(entity_type = 'review' AND entity_id = ANY(%s))")
+                    notification_params.append(review_ids)
+                if chat_message_ids:
+                    notification_conditions.append("(entity_type = 'chat_message' AND entity_id = ANY(%s))")
+                    notification_params.append(chat_message_ids)
+                cursor.execute(
+                    f"""
+                    DELETE FROM notifications
+                    WHERE {" OR ".join(notification_conditions)}
+                    """,
+                    tuple(notification_params),
+                )
+
+                if assignment_ids_to_delete:
+                    cursor.execute(
+                        """
+                        DELETE FROM task_completion_confirmations
+                        WHERE task_assignment_id = ANY(%s)
+                           OR dispute_opened_by_user_id = %s
+                        """,
+                        (assignment_ids_to_delete, user_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        DELETE FROM task_completion_confirmations
+                        WHERE dispute_opened_by_user_id = %s
+                        """,
+                        (user_id,),
+                    )
+
+                if review_ids:
+                    cursor.execute(
+                        """
+                        DELETE FROM reviews
+                        WHERE id = ANY(%s)
+                        """,
+                        (review_ids,),
+                    )
+
+                if chat_ids:
+                    cursor.execute(
+                        """
+                        DELETE FROM task_chats
+                        WHERE id = ANY(%s)
+                        """,
+                        (chat_ids,),
+                    )
+
+                if assignment_ids_to_delete:
+                    cursor.execute(
+                        """
+                        DELETE FROM task_assignments
+                        WHERE id = ANY(%s)
+                        """,
+                        (assignment_ids_to_delete,),
+                    )
+
+                if offer_ids_to_delete:
+                    cursor.execute(
+                        """
+                        DELETE FROM offer_counter_offers
+                        WHERE author_user_id = %s
+                           OR offer_id = ANY(%s)
+                        """,
+                        (user_id, offer_ids_to_delete),
+                    )
+                    cursor.execute(
+                        """
+                        DELETE FROM task_offers
+                        WHERE id = ANY(%s)
+                        """,
+                        (offer_ids_to_delete,),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        DELETE FROM offer_counter_offers
+                        WHERE author_user_id = %s
+                        """,
+                        (user_id,),
+                    )
+
+                if own_task_ids:
+                    cursor.execute(
+                        """
+                        DELETE FROM tasks
+                        WHERE id = ANY(%s)
+                        """,
+                        (own_task_ids,),
+                    )
+
+                cursor.execute("DELETE FROM notification_preferences WHERE user_id = %s", (user_id,))
+                cursor.execute("DELETE FROM web_push_subscriptions WHERE user_id = %s", (user_id,))
+                cursor.execute("DELETE FROM user_sessions WHERE user_id = %s", (user_id,))
+                cursor.execute("DELETE FROM email_verification_codes WHERE email = %s", (user["email"],))
+
+                cursor.execute(
+                    """
+                    DELETE FROM users
+                    WHERE id = %s
+                    """,
+                    (user_id,),
+                )
+
+                for task_id in task_ids_to_reset:
+                    self._reset_task_after_user_cleanup(cursor, task_id)
+
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM users
+                    WHERE university_id = %s
+                    """,
+                    (user["university_id"],),
+                )
+                remaining_user_ids = [row["id"] for row in cursor.fetchall()]
+                self._refresh_user_metrics(cursor, remaining_user_ids)
+
+            connection.commit()
+
+        return {
+            "status": "deleted",
+            "user_id": user_id,
+        }
+
+    def _ensure_dormitories(
+        self,
+        cursor: Any,
+        *,
+        university_id: int,
+        address_prefix: str,
+    ) -> dict[str, int]:
+        dormitory_ids: dict[str, int] = {}
+        for name, code in (
+            ("Общежитие №1", "D1"),
+            ("Общежитие №2", "D2"),
+            ("Общежитие №3", "D3"),
+        ):
+            cursor.execute(
+                """
+                INSERT INTO dormitories (university_id, name, code, address)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (university_id, name)
+                DO UPDATE SET
+                    code = EXCLUDED.code,
+                    address = EXCLUDED.address
+                RETURNING id
+                """,
+                (university_id, name, code, f"{address_prefix}, {name}"),
+            )
+            dormitory_ids[name] = cursor.fetchone()["id"]
+        return dormitory_ids
+
     def create_refresh_session(
         self,
         user_id: int,
@@ -494,9 +1065,47 @@ class PlatformRepository:
                         u.completed_tasks_count,
                         u.created_tasks_count,
                         d.id AS dormitory_id,
-                        d.name AS dormitory_name
+                        d.name AS dormitory_name,
+                        customer_reviews.rating_avg AS customer_rating_avg,
+                        customer_reviews.reviews_count AS customer_reviews_count,
+                        customer_tasks.completed_tasks_count AS customer_completed_tasks_count,
+                        performer_reviews.rating_avg AS performer_rating_avg,
+                        performer_reviews.reviews_count AS performer_reviews_count,
+                        performer_tasks.completed_tasks_count AS performer_completed_tasks_count
                     FROM users u
                     LEFT JOIN dormitories d ON d.id = u.dormitory_id
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS reviews_count,
+                            ROUND(AVG(r.rating)::numeric, 2) AS rating_avg
+                        FROM reviews r
+                        JOIN task_assignments a ON a.id = r.task_assignment_id
+                        WHERE r.target_user_id = u.id
+                          AND r.is_visible = TRUE
+                          AND a.customer_id = u.id
+                    ) AS customer_reviews ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT COUNT(*) AS completed_tasks_count
+                        FROM task_assignments a
+                        WHERE a.customer_id = u.id
+                          AND a.status = 'completed'
+                    ) AS customer_tasks ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS reviews_count,
+                            ROUND(AVG(r.rating)::numeric, 2) AS rating_avg
+                        FROM reviews r
+                        JOIN task_assignments a ON a.id = r.task_assignment_id
+                        WHERE r.target_user_id = u.id
+                          AND r.is_visible = TRUE
+                          AND a.performer_id = u.id
+                    ) AS performer_reviews ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT COUNT(*) AS completed_tasks_count
+                        FROM task_assignments a
+                        WHERE a.performer_id = u.id
+                          AND a.status = 'completed'
+                    ) AS performer_tasks ON TRUE
                     WHERE u.id = %s
                     """,
                     (user_id,),
@@ -526,6 +1135,16 @@ class PlatformRepository:
             "reviews_count": row["reviews_count"],
             "completed_tasks_count": row["completed_tasks_count"],
             "created_tasks_count": row["created_tasks_count"],
+            "customer_metrics": {
+                "rating_avg": float(row["customer_rating_avg"] or 0),
+                "reviews_count": int(row["customer_reviews_count"] or 0),
+                "completed_tasks_count": int(row["customer_completed_tasks_count"] or 0),
+            },
+            "performer_metrics": {
+                "rating_avg": float(row["performer_rating_avg"] or 0),
+                "reviews_count": int(row["performer_reviews_count"] or 0),
+                "completed_tasks_count": int(row["performer_completed_tasks_count"] or 0),
+            },
             "badges": badges,
         }
 
@@ -539,10 +1158,22 @@ class PlatformRepository:
                         r.rating,
                         r.comment,
                         r.created_at,
+                        r.task_id,
+                        t.title AS task_title,
                         a.id AS author_id,
-                        a.full_name AS author_full_name
+                        a.full_name AS author_full_name,
+                        CASE
+                            WHEN assignment.customer_id = r.author_id THEN 'customer'
+                            ELSE 'performer'
+                        END AS author_role,
+                        CASE
+                            WHEN assignment.customer_id = r.target_user_id THEN 'customer'
+                            ELSE 'performer'
+                        END AS target_role
                     FROM reviews r
                     JOIN users a ON a.id = r.author_id
+                    JOIN task_assignments assignment ON assignment.id = r.task_assignment_id
+                    JOIN tasks t ON t.id = r.task_id
                     WHERE r.target_user_id = %s
                       AND r.is_visible = TRUE
                     ORDER BY r.created_at DESC, r.id DESC
@@ -557,6 +1188,10 @@ class PlatformRepository:
                 "rating": row["rating"],
                 "comment": row["comment"],
                 "created_at": row["created_at"],
+                "task_id": row["task_id"],
+                "task_title": row["task_title"],
+                "author_role": row["author_role"],
+                "target_role": row["target_role"],
                 "author": {
                     "id": row["author_id"],
                     "full_name": row["author_full_name"],
@@ -575,16 +1210,8 @@ class PlatformRepository:
         limit: int,
         offset: int,
     ) -> dict[str, Any]:
-        conditions = [
-            "t.university_id = %s",
-            "(t.visibility = 'university' OR (%s IS NOT NULL AND t.dormitory_id = %s) OR t.customer_id = %s)",
-        ]
-        params: list[Any] = [
-            current_university_id,
-            current_dormitory_id,
-            current_dormitory_id,
-            current_user_id,
-        ]
+        conditions = ["t.university_id = %s"]
+        params: list[Any] = [current_university_id]
 
         if filters.get("scope") == "dormitory":
             dormitory_id = filters.get("dormitory_id") or current_dormitory_id
@@ -731,14 +1358,6 @@ class PlatformRepository:
                 if row is None:
                     raise DomainValidationError("Задача не найдена")
 
-                if (
-                    row["visibility"] == "dormitory"
-                    and row["dormitory_id"] != current_dormitory_id
-                    and row["customer_id"] != current_user_id
-                    and row["accepted_offer_performer_id"] != current_user_id
-                ):
-                    raise ForbiddenError("Эта задача недоступна для вашего общежития")
-
                 cursor.execute(
                     """
                     SELECT status
@@ -751,6 +1370,7 @@ class PlatformRepository:
                     (task_id, current_user_id),
                 )
                 own_offer = cursor.fetchone()
+                review_summary = self._build_task_review_summary(cursor, task_id, current_user_id=current_user_id)
 
         task = self._serialize_task_summary(row)
         task["chat_id"] = row["chat_id"]
@@ -761,6 +1381,7 @@ class PlatformRepository:
             and (own_offer is None or own_offer["status"] in ("rejected", "withdrawn"))
         )
         task["accepted_offer"] = None
+        task["review_summary"] = review_summary
 
         if row["accepted_offer_id"] is not None:
             task["accepted_offer"] = {
@@ -931,11 +1552,14 @@ class PlatformRepository:
                 t.cancelled_at,
                 d.id AS dormitory_id,
                 d.name AS dormitory_name,
+                customer.id AS customer_id,
+                customer.full_name AS customer_full_name,
                 performer.id AS performer_id,
                 performer.full_name AS performer_full_name
             FROM tasks t
             {join_clause}
             LEFT JOIN task_assignments assignment ON assignment.task_id = t.id
+            LEFT JOIN users customer ON customer.id = t.customer_id
             LEFT JOIN users performer ON performer.id = assignment.performer_id
             LEFT JOIN dormitories d ON d.id = t.dormitory_id
             WHERE {owner_condition}
@@ -947,32 +1571,46 @@ class PlatformRepository:
             with connection.cursor() as cursor:
                 cursor.execute(query, (user_id,))
                 rows = list(cursor.fetchall())
+                items: list[dict[str, Any]] = []
+                for row in rows:
+                    item = {
+                        "id": row["id"],
+                        "title": row["title"],
+                        "description": row["description"],
+                        "category": row["category"],
+                        "urgency": row["urgency"],
+                        "payment_type": row["payment_type"],
+                        "price_amount": row["price_amount"],
+                        "status": row["status"],
+                        "offers_count": row["offers_count"],
+                        "created_at": row["created_at"],
+                        "completed_at": row["completed_at"],
+                        "cancelled_at": row["cancelled_at"],
+                        "role": role,
+                        "dormitory": None if row["dormitory_id"] is None else {
+                            "id": row["dormitory_id"],
+                            "name": row["dormitory_name"],
+                        },
+                        "customer": None if row["customer_id"] is None else {
+                            "id": row["customer_id"],
+                            "full_name": row["customer_full_name"],
+                        },
+                        "performer": None if row["performer_id"] is None else {
+                            "id": row["performer_id"],
+                            "full_name": row["performer_full_name"],
+                        },
+                    }
 
-        return [
-            {
-                "id": row["id"],
-                "title": row["title"],
-                "description": row["description"],
-                "category": row["category"],
-                "urgency": row["urgency"],
-                "payment_type": row["payment_type"],
-                "price_amount": row["price_amount"],
-                "status": row["status"],
-                "offers_count": row["offers_count"],
-                "created_at": row["created_at"],
-                "completed_at": row["completed_at"],
-                "cancelled_at": row["cancelled_at"],
-                "dormitory": None if row["dormitory_id"] is None else {
-                    "id": row["dormitory_id"],
-                    "name": row["dormitory_name"],
-                },
-                "performer": None if row["performer_id"] is None else {
-                    "id": row["performer_id"],
-                    "full_name": row["performer_full_name"],
-                },
-            }
-            for row in rows
-        ]
+                    if row["status"] == "completed":
+                        item["review_summary"] = self._build_task_review_summary(
+                            cursor,
+                            row["id"],
+                            current_user_id=user_id,
+                        )
+
+                    items.append(item)
+
+        return items
 
     def list_task_offers(self, task_id: int, *, university_id: int) -> list[dict[str, Any]]:
         with get_connection() as connection:
@@ -1479,6 +2117,24 @@ class PlatformRepository:
 
                 cursor.execute(
                     """
+                    SELECT id, author_user_id, status
+                    FROM offer_counter_offers
+                    WHERE offer_id = %s
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT 1
+                    """,
+                    (offer_id,),
+                )
+                latest_counter_offer = cursor.fetchone()
+
+                if latest_counter_offer is None and author_user_id == offer["performer_id"]:
+                    raise DomainValidationError("Сначала дождитесь ответа заказчика на ваш отклик")
+
+                if latest_counter_offer is not None and latest_counter_offer["author_user_id"] == author_user_id:
+                    raise DomainValidationError("Вы уже обновили условия. Дождитесь ответа второй стороны")
+
+                cursor.execute(
+                    """
                     UPDATE offer_counter_offers
                     SET status = 'superseded', updated_at = CURRENT_TIMESTAMP
                     WHERE offer_id = %s
@@ -1882,6 +2538,129 @@ class PlatformRepository:
 
         return {"status": "disputed"}
 
+    def list_task_reviews(
+        self,
+        task_id: int,
+        *,
+        current_user_id: int,
+        current_university_id: int,
+        current_dormitory_id: int | None,
+    ) -> list[dict[str, Any]]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                self._ensure_task_visibility(
+                    cursor,
+                    task_id,
+                    current_user_id=current_user_id,
+                    current_university_id=current_university_id,
+                    current_dormitory_id=current_dormitory_id,
+                )
+                rows = self._list_task_review_rows(cursor, task_id)
+
+        return [self._serialize_task_review(row) for row in rows]
+
+    def create_task_review(self, task_id: int, *, user_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                assignment = self._get_assignment_context(cursor, task_id, for_update=True)
+                if assignment is None:
+                    raise DomainValidationError("Для задачи ещё нет подтверждённой сделки")
+                if assignment["status"] != "completed":
+                    raise DomainValidationError("Оставить отзыв можно только после завершения сделки")
+                if user_id not in (assignment["customer_id"], assignment["performer_id"]):
+                    raise ForbiddenError("Отзыв могут оставить только участники сделки")
+
+                cursor.execute(
+                    """
+                    SELECT id
+                    FROM reviews
+                    WHERE task_assignment_id = %s
+                      AND author_id = %s
+                    """,
+                    (assignment["id"], user_id),
+                )
+                if cursor.fetchone() is not None:
+                    raise DomainValidationError("Вы уже оставили отзыв по этой сделке")
+
+                target_user_id = (
+                    assignment["performer_id"]
+                    if user_id == assignment["customer_id"]
+                    else assignment["customer_id"]
+                )
+
+                cursor.execute(
+                    """
+                    INSERT INTO reviews (
+                        task_id,
+                        task_assignment_id,
+                        author_id,
+                        target_user_id,
+                        rating,
+                        comment
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        task_id,
+                        assignment["id"],
+                        user_id,
+                        target_user_id,
+                        payload["rating"],
+                        (payload.get("comment") or "").strip() or None,
+                    ),
+                )
+                review_id = cursor.fetchone()["id"]
+
+                self._insert_notification(
+                    cursor,
+                    user_id=target_user_id,
+                    notification_type="review_received",
+                    title="Получен отзыв по сделке",
+                    body="Вторая сторона оставила отзыв о завершённой сделке.",
+                    entity_type="task",
+                    entity_id=task_id,
+                    payload={"task_id": task_id, "review_id": review_id},
+                )
+                self._refresh_user_metrics(cursor, [target_user_id])
+
+                cursor.execute(
+                    """
+                    SELECT
+                        r.id,
+                        r.task_id,
+                        r.task_assignment_id,
+                        r.author_id,
+                        author.full_name AS author_full_name,
+                        r.target_user_id,
+                        target.full_name AS target_full_name,
+                        r.rating,
+                        r.comment,
+                        r.is_visible,
+                        r.moderation_status,
+                        r.created_at,
+                        r.updated_at,
+                        CASE
+                            WHEN assignment.customer_id = r.author_id THEN 'customer'
+                            ELSE 'performer'
+                        END AS author_role,
+                        CASE
+                            WHEN assignment.customer_id = r.target_user_id THEN 'customer'
+                            ELSE 'performer'
+                        END AS target_role
+                    FROM reviews r
+                    JOIN task_assignments assignment ON assignment.id = r.task_assignment_id
+                    JOIN users author ON author.id = r.author_id
+                    JOIN users target ON target.id = r.target_user_id
+                    WHERE r.id = %s
+                    """,
+                    (review_id,),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return self._serialize_task_review(row)
+
     def list_notifications(
         self,
         *,
@@ -2147,7 +2926,7 @@ class PlatformRepository:
                         user_id=assignment["customer_id"],
                         notification_type="task_completed_confirmed",
                         title="Задача завершена",
-                        body="Выполнение задачи подтверждено обеими сторонами.",
+                        body="Выполнение подтверждено обеими сторонами. Теперь можно оставить отзыв.",
                         entity_type="task",
                         entity_id=task_id,
                         payload={"task_id": task_id},
@@ -2157,7 +2936,7 @@ class PlatformRepository:
                         user_id=assignment["performer_id"],
                         notification_type="task_completed_confirmed",
                         title="Задача завершена",
-                        body="Выполнение задачи подтверждено обеими сторонами.",
+                        body="Выполнение подтверждено обеими сторонами. Теперь можно оставить отзыв.",
                         entity_type="task",
                         entity_id=task_id,
                         payload={"task_id": task_id},
@@ -2227,6 +3006,151 @@ class PlatformRepository:
         if row is None:
             raise DomainValidationError("Задача не найдена")
         return row
+
+    def _ensure_task_visibility(
+        self,
+        cursor,
+        task_id: int,
+        *,
+        current_user_id: int,
+        current_university_id: int,
+        current_dormitory_id: int | None,
+    ) -> dict[str, Any]:
+        cursor.execute(
+            """
+            SELECT
+                t.id,
+                t.visibility,
+                t.customer_id,
+                t.dormitory_id,
+                ao.performer_id AS accepted_offer_performer_id
+            FROM tasks t
+            LEFT JOIN task_offers ao ON ao.id = t.accepted_offer_id
+            WHERE t.id = %s
+              AND t.university_id = %s
+            """,
+            (task_id, current_university_id),
+        )
+        task = cursor.fetchone()
+        if task is None:
+            raise DomainValidationError("Задача не найдена")
+
+        return task
+
+    def _get_assignment_context(
+        self,
+        cursor,
+        task_id: int,
+        *,
+        for_update: bool = False,
+    ) -> dict[str, Any] | None:
+        query = """
+            SELECT
+                a.id,
+                a.task_id,
+                a.customer_id,
+                customer.full_name AS customer_full_name,
+                a.performer_id,
+                performer.full_name AS performer_full_name,
+                a.status
+            FROM task_assignments a
+            JOIN users customer ON customer.id = a.customer_id
+            JOIN users performer ON performer.id = a.performer_id
+            WHERE a.task_id = %s
+        """
+        if for_update:
+            query += " FOR UPDATE"
+        cursor.execute(query, (task_id,))
+        return cursor.fetchone()
+
+    def _list_task_review_rows(self, cursor, task_id: int) -> list[dict[str, Any]]:
+        cursor.execute(
+            """
+            SELECT
+                r.id,
+                r.task_id,
+                r.task_assignment_id,
+                r.author_id,
+                author.full_name AS author_full_name,
+                r.target_user_id,
+                target.full_name AS target_full_name,
+                r.rating,
+                r.comment,
+                r.is_visible,
+                r.moderation_status,
+                r.created_at,
+                r.updated_at,
+                CASE
+                    WHEN assignment.customer_id = r.author_id THEN 'customer'
+                    ELSE 'performer'
+                END AS author_role,
+                CASE
+                    WHEN assignment.customer_id = r.target_user_id THEN 'customer'
+                    ELSE 'performer'
+                END AS target_role
+            FROM reviews r
+            JOIN task_assignments assignment ON assignment.id = r.task_assignment_id
+            JOIN users author ON author.id = r.author_id
+            JOIN users target ON target.id = r.target_user_id
+            WHERE r.task_id = %s
+            ORDER BY r.created_at ASC, r.id ASC
+            """,
+            (task_id,),
+        )
+        return list(cursor.fetchall())
+
+    def _build_task_review_summary(
+        self,
+        cursor,
+        task_id: int,
+        *,
+        current_user_id: int,
+    ) -> dict[str, Any] | None:
+        assignment = self._get_assignment_context(cursor, task_id)
+        if assignment is None:
+            return None
+
+        reviews = [self._serialize_task_review(row) for row in self._list_task_review_rows(cursor, task_id)]
+        current_role: str | None = None
+        counterpart_user: dict[str, Any] | None = None
+
+        if current_user_id == assignment["customer_id"]:
+            current_role = "customer"
+            counterpart_user = {
+                "id": assignment["performer_id"],
+                "full_name": assignment["performer_full_name"],
+                "role": "performer",
+            }
+        elif current_user_id == assignment["performer_id"]:
+            current_role = "performer"
+            counterpart_user = {
+                "id": assignment["customer_id"],
+                "full_name": assignment["customer_full_name"],
+                "role": "customer",
+            }
+
+        my_review = next((review for review in reviews if review["author"]["id"] == current_user_id), None)
+        counterpart_review = None
+        if current_role is not None:
+            counterpart_review = next((review for review in reviews if review["author"]["id"] != current_user_id), None)
+
+        customer_review = next((review for review in reviews if review["target"]["role"] == "customer"), None)
+        performer_review = next((review for review in reviews if review["target"]["role"] == "performer"), None)
+        is_completed = assignment["status"] == "completed"
+
+        return {
+            "assignment_id": assignment["id"],
+            "status": assignment["status"],
+            "my_role": current_role,
+            "counterpart_user": counterpart_user,
+            "can_leave_review": bool(is_completed and current_role is not None and my_review is None),
+            "pending_by_me": bool(is_completed and current_role is not None and my_review is None),
+            "pending_by_counterpart": bool(is_completed and current_role is not None and counterpart_review is None),
+            "my_review": my_review,
+            "counterpart_review": counterpart_review,
+            "customer_review": customer_review,
+            "performer_review": performer_review,
+        }
 
     def _ensure_counter_offer_access(self, cursor, offer_id: int, user_id: int, *, for_update: bool = False) -> dict[str, Any]:
         query = """
@@ -2355,6 +3279,29 @@ class PlatformRepository:
             },
         }
 
+    def _serialize_task_review(self, row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "task_id": row["task_id"],
+            "task_assignment_id": row["task_assignment_id"],
+            "rating": int(row["rating"]),
+            "comment": row["comment"],
+            "is_visible": bool(row["is_visible"]),
+            "moderation_status": row["moderation_status"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "author": {
+                "id": row["author_id"],
+                "full_name": row["author_full_name"],
+                "role": row["author_role"],
+            },
+            "target": {
+                "id": row["target_user_id"],
+                "full_name": row["target_full_name"],
+                "role": row["target_role"],
+            },
+        }
+
     def _serialize_notification(self, row: dict[str, Any]) -> dict[str, Any]:
         payload = row["payload"]
         if isinstance(payload, str):
@@ -2443,6 +3390,47 @@ class PlatformRepository:
             """
             UPDATE tasks
             SET
+                offers_count = %s,
+                status = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (active_offers, next_status, task_id),
+        )
+
+    def _reset_task_after_user_cleanup(self, cursor, task_id: int) -> None:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS active_offers
+            FROM task_offers
+            WHERE task_id = %s
+              AND status IN ('pending', 'accepted')
+            """,
+            (task_id,),
+        )
+        active_offers = cursor.fetchone()["active_offers"]
+
+        cursor.execute(
+            """
+            SELECT status
+            FROM tasks
+            WHERE id = %s
+            """,
+            (task_id,),
+        )
+        task = cursor.fetchone()
+        if task is None:
+            return
+
+        next_status = task["status"]
+        if task["status"] != "cancelled":
+            next_status = "offers" if active_offers > 0 else "open"
+
+        cursor.execute(
+            """
+            UPDATE tasks
+            SET
+                accepted_offer_id = NULL,
                 offers_count = %s,
                 status = %s,
                 updated_at = CURRENT_TIMESTAMP

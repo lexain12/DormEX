@@ -1,5 +1,5 @@
 import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from "@/auth/storage";
-import type { ApiErrorShape, AuthVerifyCodeResponse } from "@/api/types";
+import type { ApiErrorShape, AuthLoginResponse } from "@/api/types";
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(/\/$/, "");
 const DEFAULT_REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 15000);
@@ -23,14 +23,14 @@ type AuthMode = "access" | "refresh" | "none";
 interface RequestOptions extends Omit<RequestInit, "body"> {
   authMode?: AuthMode;
   body?: unknown;
-  query?: Record<string, string | number | boolean | null | undefined>;
+  query?: object;
   disableRefreshRetry?: boolean;
   timeoutMs?: number;
 }
 
 let refreshPromise: Promise<string | null> | null = null;
 
-function buildQuery(query?: Record<string, string | number | boolean | null | undefined>): string {
+function buildQuery(query?: object): string {
   if (!query) {
     return "";
   }
@@ -180,7 +180,7 @@ export async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
       try {
-        const { response, data } = await runFetch<AuthVerifyCodeResponse | { access_token?: string; refresh_token?: string }>("/auth/refresh", {
+        const { response, data } = await runFetch<AuthLoginResponse | { access_token?: string; refresh_token?: string }>("/auth/refresh", {
           method: "POST",
           authMode: "refresh",
           body: { refresh_token: refreshToken },

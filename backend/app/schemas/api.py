@@ -45,6 +45,94 @@ class EmailCodeVerifyRequest(EmailPayloadMixin):
         return normalized_value
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+    @field_validator("username")
+    @classmethod
+    def validate_username_field(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if not normalized_value:
+            raise ValueError("Введите логин")
+        return normalized_value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_field(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Введите пароль")
+        return value
+
+
+class RegisterRequest(EmailPayloadMixin):
+    username: str
+    password: str
+    dormitory_id: int
+    full_name: str | None = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_register_username_field(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if not normalized_value:
+            raise ValueError("Введите логин")
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]{3,100}", normalized_value):
+            raise ValueError("Логин должен быть длиной от 3 символов и содержать только буквы, цифры и ._-")
+        return normalized_value
+
+    @field_validator("password")
+    @classmethod
+    def validate_register_password_field(cls, value: str) -> str:
+        if len(value.strip()) < 8:
+            raise ValueError("Пароль должен содержать минимум 8 символов")
+        return value
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_register_full_name_field(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        return normalized_value or None
+
+
+class AdminCreateRequest(EmailPayloadMixin):
+    username: str
+    password: str
+    full_name: str | None = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_admin_username_field(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if not normalized_value:
+            raise ValueError("Введите логин")
+        if not re.fullmatch(r"[a-zA-Z0-9_.-]{3,100}", normalized_value):
+            raise ValueError("Логин должен быть длиной от 3 символов и содержать только буквы, цифры и ._-")
+        return normalized_value
+
+    @field_validator("password")
+    @classmethod
+    def validate_admin_password_field(cls, value: str) -> str:
+        if len(value.strip()) < 8:
+            raise ValueError("Пароль должен содержать минимум 8 символов")
+        return value
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_admin_full_name_field(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        return normalized_value or None
+
+
+class AdminDeleteUserResponse(BaseModel):
+    status: Literal["deleted"]
+    user_id: int
+
+
 class RefreshTokenRequest(BaseModel):
     refresh_token: str | None = None
 
@@ -113,3 +201,8 @@ class OpenDisputeRequest(BaseModel):
 
 class ChatMessageRequest(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
+
+
+class CreateTaskReviewRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=5000)

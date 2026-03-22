@@ -64,3 +64,17 @@ databaseChangeLog:
         - sqlFile:
             path: sql/002_rebuild_mvp_schema.sql
             relativeToChangelogFile: true
+  - changeSet:
+      id: 003-add-username-password-auth
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/003_add_username_password_auth.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: 004-clear-demo-passwords
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/004_clear_demo_passwords.sql
+            relativeToChangelogFile: true

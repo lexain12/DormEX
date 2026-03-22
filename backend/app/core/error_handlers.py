@@ -122,11 +122,16 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_, exc: HTTPException) -> JSONResponse:
         if isinstance(exc.detail, dict) and "error" in exc.detail:
-            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=exc.detail,
+                headers=exc.headers,
+            )
 
         code = "not_found" if exc.status_code == 404 else "http_error"
         return JSONResponse(
             status_code=exc.status_code,
+            headers=exc.headers,
             content=build_error_payload(
                 code=code,
                 message=str(exc.detail),

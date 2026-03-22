@@ -7,6 +7,7 @@ import { GuestOnlyRoute, ProtectedRoute } from "@/auth/route-guards";
 import { AuthProvider } from "@/context/auth-context";
 import Index from "./pages/Index.tsx";
 import TaskDetail from "./pages/TaskDetail.tsx";
+import OfferNegotiation from "./pages/OfferNegotiation.tsx";
 import Profile from "./pages/Profile.tsx";
 import Analytics from "./pages/Analytics.tsx";
 import AuthPage from "./pages/Auth.tsx";
@@ -16,7 +17,7 @@ import { InteractionStoreProvider } from "@/context/interaction-store";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const queryClient = new QueryClient();
-const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
+const routerBasename = import.meta.env.BASE_URL || undefined;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -61,7 +62,23 @@ const App = () => (
                   )}
                 />
                 <Route
+                  path="/task/:id/offers/:offerId/negotiation"
+                  element={(
+                    <ProtectedRoute>
+                      <OfferNegotiation />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route
                   path="/profile"
+                  element={(
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  )}
+                />
+                <Route
+                  path="/users/:id"
                   element={(
                     <ProtectedRoute>
                       <Profile />

@@ -1,7 +1,8 @@
 from typing import Any
+import os
 
 from ..core.auth_tokens import create_access_token, create_refresh_token, generate_verification_code
-from ..core.exceptions import AuthenticationError, DomainValidationError
+from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError
 from ..repositories.platform_repository import PlatformRepository
 from .current_user_service import CurrentUserContext
 from .email_service import EmailService
@@ -18,6 +19,15 @@ class PlatformService:
 
     def request_email_code(self, email: str) -> dict[str, Any]:
         normalized_email = email.lower().strip()
+        local_auth_email_domain = os.getenv("LOCAL_AUTH_EMAIL_DOMAIN", "campus.test").lower()
+
+        if (
+            self.email_service.smtp_host != "mailhog"
+            and normalized_email.endswith(f"@{local_auth_email_domain}")
+        ):
+            raise DomainValidationError(
+                f"Адреса @{local_auth_email_domain} работают только с локальной почтой MailHog. Для реальной отправки укажите существующий email."
+            )
 
         university = self.repository.get_university_by_email(normalized_email)
         if university is None:
@@ -56,6 +66,87 @@ class PlatformService:
             "refresh_token": refresh_token,
             "user": user,
         }
+
+    def login(self, username: str, password: str, *, user_agent: str | None, ip: str | None) -> dict[str, Any]:
+        user = self.repository.verify_credentials_and_get_user(username, password)
+        refresh_token = create_refresh_token()
+        self.repository.create_refresh_session(
+            user["id"],
+            refresh_token,
+            user_agent=user_agent,
+            ip=ip,
+        )
+
+        return {
+            "access_token": create_access_token(user["id"]),
+            "refresh_token": refresh_token,
+            "user": user,
+        }
+
+    def register(
+        self,
+        *,
+        email: str,
+        username: str,
+        password: str,
+        dormitory_id: int,
+        full_name: str | None,
+        user_agent: str | None,
+        ip: str | None,
+    ) -> dict[str, Any]:
+        user = self.repository.register_user(
+            email=email,
+            username=username,
+            password=password,
+            dormitory_id=dormitory_id,
+            full_name=full_name,
+        )
+        refresh_token = create_refresh_token()
+        self.repository.create_refresh_session(
+            user["id"],
+            refresh_token,
+            user_agent=user_agent,
+            ip=ip,
+        )
+
+        return {
+            "access_token": create_access_token(user["id"]),
+            "refresh_token": refresh_token,
+            "user": user,
+        }
+
+    def list_dormitories_by_email(self, email: str) -> list[dict[str, Any]]:
+        normalized_email = email.lower().strip()
+        university = self.repository.get_university_by_email(normalized_email)
+        if university is None:
+            raise DomainValidationError("Этот email-домен не привязан к университету")
+        return self.repository.list_dormitories(university["id"])
+
+    def create_admin_account(
+        self,
+        *,
+        current_user: CurrentUserContext,
+        email: str,
+        username: str,
+        password: str,
+        full_name: str | None,
+    ) -> dict[str, Any]:
+        self._ensure_admin(current_user)
+        return self.repository.create_admin_account(
+            email=email,
+            username=username,
+            password=password,
+            full_name=full_name,
+        )
+
+    def delete_user_as_admin(
+        self,
+        *,
+        current_user: CurrentUserContext,
+        user_id: int,
+    ) -> dict[str, Any]:
+        self._ensure_admin(current_user)
+        return self.repository.delete_user_completely(user_id)
 
     def refresh_access_token(self, refresh_token: str | None) -> dict[str, Any]:
         if not refresh_token:
@@ -195,6 +286,17 @@ class PlatformService:
     def open_task_dispute(self, task_id: int, current_user: CurrentUserContext, comment: str) -> dict[str, Any]:
         return self.repository.open_task_dispute(task_id, user_id=current_user.id, comment=comment)
 
+    def list_task_reviews(self, task_id: int, current_user: CurrentUserContext) -> list[dict[str, Any]]:
+        return self.repository.list_task_reviews(
+            task_id,
+            current_user_id=current_user.id,
+            current_university_id=current_user.university_id,
+            current_dormitory_id=current_user.dormitory_id,
+        )
+
+    def create_task_review(self, task_id: int, current_user: CurrentUserContext, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.repository.create_task_review(task_id, user_id=current_user.id, payload=payload)
+
     def list_notifications(self, current_user: CurrentUserContext, status: str, limit: int, offset: int) -> dict[str, Any]:
         return self.repository.list_notifications(
             user_id=current_user.id,
@@ -217,3 +319,7 @@ class PlatformService:
             university_id=current_user.university_id,
             category=category,
         )
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

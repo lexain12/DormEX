@@ -1,11 +1,13 @@
 export const queryKeys = {
   me: ["me"] as const,
   dormitories: ["reference", "dormitories"] as const,
+  authDormitories: (email: string) => ["auth", "dormitories", email] as const,
   userProfile: (userId: number) => ["user", userId, "profile"] as const,
   userReviews: (userId: number) => ["user", userId, "reviews"] as const,
   userTasks: (userId: number, role: string, status: string) => ["user", userId, "tasks", role, status] as const,
   tasks: (filters: Record<string, unknown>) => ["tasks", filters] as const,
   task: (taskId: number) => ["task", taskId] as const,
+  taskReviews: (taskId: number) => ["task", taskId, "reviews"] as const,
   offers: (taskId: number) => ["offers", taskId] as const,
   counterOffers: (offerId: number) => ["counter-offers", offerId] as const,
   analyticsCategory: (category: string) => ["analytics", "category", category] as const,

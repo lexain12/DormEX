@@ -20,8 +20,10 @@ NGINX_HOST_PORT=80 docker compose up --build
 
 Сервисы будут доступны по адресам:
 
-- app через nginx: `http://localhost:8080/dormex/`
+- frontend через nginx: `http://localhost:8080/dormex/`
 - backend api через nginx: `http://localhost:8080/api/v1`
+- Swagger backend через nginx: `http://localhost:8080/docs`
+- Swagger backend напрямую: `http://localhost:3000/docs`
 - backend напрямую: `http://localhost:3000`
 - postgres: `localhost:5433`
 - MailHog UI: `http://localhost:8025`
@@ -39,65 +41,38 @@ Backend при старте подготавливает локальные demo
 
 - университет с доменом `campus.test`;
 - 3 общежития;
-- demo-пользователи:
-  - `alexey@campus.test`
-  - `maria@campus.test`
-  - `nikita@campus.test`
 - несколько задач в состояниях `open`, `offers`, `in_progress`, `completed`, `cancelled`;
 - отклики, чат, отзывы и уведомления.
 
-Для локального входа email-код сейчас фиксированный:
+Поддерживаются два варианта входа:
 
-- код подтверждения: `123456`
+- по логину и паролю после регистрации через форму во frontend или `POST /auth/register`
+- по email-коду через `POST /auth/email/request-code` и `POST /auth/email/verify-code`
 
-Это сделано специально для интеграционного тестирования, пока реальная отправка email не подключена.
+Локальный административный аккаунт создаётся автоматически при старте backend:
 
-## Локальный вход и demo-данные
+- логин: `admin`
+- пароль: `123`
 
-Backend при старте подготавливает локальные demo-данные для ручной проверки интеграции frontend/backend:
+Swagger backend защищён basic auth и при входе в `/docs` запросит эти admin-учётные данные.
 
-- университет с доменом `campus.test`;
-- 3 общежития;
-- demo-пользователи:
-  - `alexey@campus.test`
-  - `maria@campus.test`
-  - `nikita@campus.test`
-- несколько задач в состояниях `open`, `offers`, `in_progress`, `completed`, `cancelled`;
-- отклики, чат, отзывы и уведомления.
+Административные ручки скрыты из Swagger UI, но backend-эндпоинты остаются доступны напрямую:
 
-По умолчанию локальная авторизация отправляет одноразовый код по SMTP в MailHog:
+- `POST /api/v1/admin/accounts` — создать новый административный аккаунт
+- `DELETE /api/v1/admin/users/{user_id}` — удалить пользователя и связанные с ним сущности
 
-- открой `http://localhost:8025`;
-- запроси код для email с доменом `campus.test`;
-- письмо появится в интерфейсе MailHog;
-- возьми код из письма и введи его во frontend.
+Для почтового сценария локально можно использовать MailHog:
 
-Если хочешь использовать настоящую почту, а не MailHog:
+- открой `http://localhost:8025`
+- запроси код для email с доменом `campus.test`
+- письмо появится в интерфейсе MailHog
+- возьми код из письма и введи его во frontend
 
-1. Скопируй `.env.example` в `.env`
-2. Заполни в `.env` свои SMTP-настройки и почтовый ключ/app password
-3. Оставь `AUTH_ALLOW_ANY_EMAIL_DOMAIN=true`, если хочешь входить с обычных email вроде `mail.ru`, `gmail.com`, `yandex.ru`
-4. Перезапусти проект: `docker compose up --build -d`
+Если хочешь отправлять код в реальный почтовый ящик, проверь SMTP-настройки в `.env` и используй app password почтового провайдера. При ошибке backend теперь пишет подробную SMTP-причину в логи контейнера:
 
-В `.env.example` уже оставлены поля, куда нужно вставить секреты:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USERNAME`
-- `SMTP_PASSWORD`
-- `SMTP_USE_TLS`
-- `SMTP_USE_SSL`
-- `SMTP_FROM_EMAIL`
-- `SMTP_FROM_NAME`
-- `EMAIL_CODE_TTL_SEC`
-- `EMAIL_CODE_RESEND_INTERVAL_SEC`
-- `AUTH_ALLOW_ANY_EMAIL_DOMAIN`
-
-Для популярных провайдеров можно использовать такие стартовые значения:
-
-- Mail.ru: `SMTP_HOST=smtp.mail.ru`, `SMTP_PORT=465`, `SMTP_USE_SSL=true`
-- Yandex: `SMTP_HOST=smtp.yandex.ru`, `SMTP_PORT=465`, `SMTP_USE_SSL=true`
-- Gmail: `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USE_TLS=true`
+```bash
+docker compose logs -f backend
+```
 
 ## Миграции
 

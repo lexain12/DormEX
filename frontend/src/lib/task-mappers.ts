@@ -8,6 +8,10 @@ import type {
 } from "@/api/types";
 import { CATEGORIES, type PaymentType, type Task, type TaskStatus, type Urgency } from "@/lib/data";
 
+function getNumericPayloadValue(payload: NotificationDto["payload"], key: string): number | null {
+  return payload && typeof payload[key] === "number" ? payload[key] : null;
+}
+
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
 
@@ -133,9 +137,7 @@ export function mapUiPaymentModeToApi(mode: "fixed" | "offers" | "barter"): ApiP
 }
 
 export function resolveNotificationTaskId(notification: NotificationDto): string | null {
-  const payloadTaskId = notification.payload && typeof notification.payload.task_id === "number"
-    ? notification.payload.task_id
-    : null;
+  const payloadTaskId = getNumericPayloadValue(notification.payload, "task_id");
 
   if (payloadTaskId) {
     return String(payloadTaskId);
@@ -143,6 +145,48 @@ export function resolveNotificationTaskId(notification: NotificationDto): string
 
   if (notification.entity_type === "task" && notification.entity_id) {
     return String(notification.entity_id);
+  }
+
+  return null;
+}
+
+export function resolveNotificationDestination(notification: NotificationDto): { to: string; label: string } | null {
+  const taskId = resolveNotificationTaskId(notification);
+  const offerId = getNumericPayloadValue(notification.payload, "offer_id");
+  const chatId = getNumericPayloadValue(notification.payload, "chat_id");
+
+  if (notification.type === "chat_message_received" && taskId && chatId) {
+    return {
+      to: `/task/${taskId}?panel=chat&chat_id=${chatId}`,
+      label: "Открыть чат",
+    };
+  }
+
+  if (
+    (notification.type === "counter_offer_received"
+      || notification.type === "counter_offer_accepted"
+      || notification.type === "counter_offer_rejected")
+    && taskId
+    && offerId
+  ) {
+    return {
+      to: `/task/${taskId}/offers/${offerId}/negotiation`,
+      label: "Открыть переговоры",
+    };
+  }
+
+  if (notification.type === "task_completed_confirmed" && taskId) {
+    return {
+      to: `/task/${taskId}?panel=review`,
+      label: "Оставить отзыв",
+    };
+  }
+
+  if (taskId) {
+    return {
+      to: `/task/${taskId}`,
+      label: "Открыть задачу",
+    };
   }
 
   return null;

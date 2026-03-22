@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 from ..core.auth_tokens import decode_access_token, extract_bearer_token
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import AuthenticationError, DomainValidationError
 from ..repositories.user_repository import UserRepository
 
 
@@ -54,3 +54,9 @@ class CurrentUserService:
             dormitory_id=user["dormitory_id"],
             is_blocked=user["is_blocked"],
         )
+
+    def resolve_authenticated_user(self, raw_authorization: str | None) -> CurrentUserContext:
+        bearer_token = extract_bearer_token(raw_authorization)
+        if not bearer_token:
+            raise AuthenticationError("Authorization header with Bearer token is required")
+        return self.resolve_current_user(raw_authorization, None)

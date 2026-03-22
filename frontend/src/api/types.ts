@@ -25,6 +25,12 @@ export interface UserShort {
   completed_tasks_count?: number;
 }
 
+export interface RoleMetricsDto {
+  rating_avg: number;
+  reviews_count: number;
+  completed_tasks_count: number;
+}
+
 export interface MeUser {
   id: number;
   email: string;
@@ -37,15 +43,15 @@ export interface MeUser {
   bio?: string | null;
 }
 
-export interface AuthRequestCodeResponse {
-  status: string;
-  expires_in_sec: number;
-}
-
-export interface AuthVerifyCodeResponse {
+export interface AuthLoginResponse {
   access_token: string;
   refresh_token: string;
   user: MeUser;
+}
+
+export interface AuthRequestCodeResponse {
+  status: string;
+  expires_in_sec: number;
 }
 
 export type ApiTaskStatus = "open" | "offers" | "in_progress" | "completed" | "cancelled";
@@ -85,6 +91,7 @@ export interface TaskDetailDto extends TaskListItemDto {
   chat_id?: number | null;
   completion_confirmation_status?: string | null;
   completion_confirmed_by_me?: boolean;
+  review_summary?: TaskReviewSummaryDto | null;
 }
 
 export interface CreateTaskPayload {
@@ -140,6 +147,46 @@ export interface CreateCounterOfferPayload {
   payment_type: ApiPaymentType;
   price_amount: number | null;
   barter_description: string | null;
+}
+
+export interface TaskReviewDto {
+  id: number;
+  task_id: number;
+  task_assignment_id: number;
+  rating: number;
+  comment: string | null;
+  is_visible: boolean;
+  moderation_status: string;
+  created_at: string;
+  updated_at: string;
+  author: {
+    id: number;
+    full_name: string;
+    role: "customer" | "performer";
+  };
+  target: {
+    id: number;
+    full_name: string;
+    role: "customer" | "performer";
+  };
+}
+
+export interface TaskReviewSummaryDto {
+  assignment_id: number;
+  status: string;
+  my_role: "customer" | "performer" | null;
+  counterpart_user: {
+    id: number;
+    full_name: string;
+    role: "customer" | "performer";
+  } | null;
+  can_leave_review: boolean;
+  pending_by_me: boolean;
+  pending_by_counterpart: boolean;
+  my_review: TaskReviewDto | null;
+  counterpart_review: TaskReviewDto | null;
+  customer_review: TaskReviewDto | null;
+  performer_review: TaskReviewDto | null;
 }
 
 export interface NotificationDto {
@@ -214,6 +261,8 @@ export interface UserProfileDto {
   reviews_count: number;
   completed_tasks_count: number;
   created_tasks_count: number;
+  customer_metrics?: RoleMetricsDto;
+  performer_metrics?: RoleMetricsDto;
   badges?: string[];
 }
 
@@ -222,6 +271,10 @@ export interface UserReviewDto {
   rating: number;
   comment?: string | null;
   created_at?: string;
+  task_id?: number;
+  task_title?: string;
+  author_role?: "customer" | "performer";
+  target_role?: "customer" | "performer";
   author?: {
     id?: number;
     full_name?: string;
@@ -242,12 +295,18 @@ export interface UserTaskDto {
   created_at?: string;
   completed_at?: string | null;
   cancelled_at?: string | null;
+  role?: "customer" | "performer";
   dormitory?: {
     id: number;
     name: string;
+  } | null;
+  customer?: {
+    id?: number;
+    full_name?: string;
   } | null;
   performer?: {
     id?: number;
     full_name?: string;
   } | null;
+  review_summary?: TaskReviewSummaryDto | null;
 }
