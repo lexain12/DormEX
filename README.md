@@ -1,78 +1,166 @@
-# Campus Exchange Hub
+# DormEX
 
-Проект разделен на две части:
+DormEX - веб-приложение для общежития: задачи, отклики, чаты, уведомления и аналитика.
 
-- `frontend/` - React/Vite интерфейс
-- `backend/` - Python backend
-- `postgres` и `liquibase` поднимаются через Docker Compose
+Проект состоит из:
 
-## Запуск через Docker Compose
+- `frontend/` - React + Vite интерфейс
+- `backend/` - FastAPI API
+- `postgres`, `liquibase`, `mailhog`, `nginx` - инфраструктура через Docker Compose
+
+## Стек
+
+- frontend: React 18, TypeScript, Vite, Tailwind
+- backend: FastAPI, Python 3.11, PostgreSQL
+- infra: Docker Compose, Nginx, Liquibase, MailHog
+
+## Деплой
+
+Деплой и обновление окружения нужно выполнять только через:
 
 ```bash
+./deploy.sh
+```
+
+Не используй для деплоя ручные команды вроде `docker compose up`, `docker build` или ручную пересборку образов. В этом репозитории штатный сценарий выкладки зафиксирован именно в `./deploy.sh`.
+
+Скрипт:
+
+- останавливает текущие контейнеры
+- удаляет старые образы приложения
+- пересобирает backend и nginx image
+- поднимает сервисы заново через Docker Compose
+
+После деплоя приложение будет доступно по адресу `http://localhost:${NGINX_HOST_PORT:-8080}/dormex/`.
+
+## Демо-данные и вход
+
+Backend при старте подготавливает локальные данные:
+
+- университет с доменом `campus.test`
+- несколько общежитий
+- demo-задачи в разных статусах
+- отклики, сообщения, отзывы и уведомления
+
+Swagger использует Basic Auth. Для входа в `/docs` используй admin-учётные данные.
+
+Поддерживаются два сценария входа:
+
+- регистрация и логин через интерфейс
+- вход по email-коду через API `auth/email/request-code` и `auth/email/verify-code`
+
+Для локальной почты по умолчанию используется MailHog. Если нужен реальный SMTP, заполни `.env` на основе `.env.example`.
+
+## Разработчику
+
+### Что нужно
+
+- Docker и Docker Compose
+- Node.js 20+
+- npm
+- Python 3.11
+
+### Локальная разработка через Compose
+
+Если нужен полный стек без ручной сборки сервисов:
+
+```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-Если у тебя свободен `:80`, можно вернуть поведение старого nginx-конфига:
+Это основной и самый простой способ локальной разработки, если нужен frontend, backend, база, миграции и MailHog сразу.
+
+После запуска доступны:
+
+- приложение: `http://localhost:8080/dormex/`
+- API через nginx: `http://localhost:8080/api/v1`
+- Swagger: `http://localhost:8080/docs`
+- backend напрямую: `http://localhost:3000`
+- PostgreSQL: `localhost:5433`
+- MailHog UI: `http://localhost:8025`
+
+Если на машине свободен `80` порт, можно пробросить nginx туда:
 
 ```bash
 NGINX_HOST_PORT=80 docker compose up --build
 ```
 
-Сервисы будут доступны по адресам:
+### Раздельный запуск frontend и backend
 
-- frontend через nginx: `http://localhost:8080/dormex/`
-- backend api через nginx: `http://localhost:8080/api/v1`
-- Swagger backend через nginx: `http://localhost:8080/docs`
-- Swagger backend напрямую: `http://localhost:3000/docs`
-- backend напрямую: `http://localhost:3000`
-- postgres: `localhost:5433`
-- MailHog UI: `http://localhost:8025`
+Если нужно разрабатывать frontend и backend отдельно:
 
-## Что внутри
+1. Подними инфраструктуру:
 
-- PostgreSQL как основная база данных
-- Liquibase для миграций схемы
-- FastAPI backend, который работает через `DATABASE_URL`
-- Nginx раздаёт собранный frontend и проксирует API в backend
+```bash
+cp .env.example .env
+docker compose up -d postgres liquibase mailhog
+```
 
-## Локальный вход и demo-данные
+2. Запусти backend:
 
-Backend при старте подготавливает локальные demo-данные для ручной проверки интеграции frontend/backend:
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+DATABASE_URL=postgresql://campus_user:campus_pass@localhost:5433/campus_exchange uvicorn app.main:app --reload --host 0.0.0.0 --port 3000
+```
 
-- университет с доменом `campus.test`;
-- 3 общежития;
-- несколько задач в состояниях `open`, `offers`, `in_progress`, `completed`, `cancelled`;
-- отклики, чат, отзывы и уведомления.
+3. Запусти frontend:
 
-Поддерживаются два варианта входа:
+```bash
+cd frontend
+npm ci
+VITE_API_BASE_URL=http://localhost:3000/api/v1 npm run dev
+```
 
-- по логину и паролю после регистрации через форму во frontend или `POST /auth/register`
-- по email-коду через `POST /auth/email/request-code` и `POST /auth/email/verify-code`
+В dev-режиме Vite работает на `http://localhost:5173`, backend на `http://localhost:3000`.
 
-Локальный административный аккаунт создаётся автоматически при старте backend:
+### Полезные команды
 
-- логин: `admin`
-- пароль: `123`
+Frontend:
 
-Swagger backend защищён basic auth и при входе в `/docs` запросит эти admin-учётные данные.
+```bash
+cd frontend
+npm run lint
+npm run test
+npm run build
+```
 
-Административные ручки скрыты из Swagger UI, но backend-эндпоинты остаются доступны напрямую:
+Backend:
 
-- `POST /api/v1/admin/accounts` — создать новый административный аккаунт
-- `DELETE /api/v1/admin/users/{user_id}` — удалить пользователя и связанные с ним сущности
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 3000
+```
 
-Для почтового сценария локально можно использовать MailHog:
-
-- открой `http://localhost:8025`
-- запроси код для email с доменом `campus.test`
-- письмо появится в интерфейсе MailHog
-- возьми код из письма и введи его во frontend
-
-Если хочешь отправлять код в реальный почтовый ящик, проверь SMTP-настройки в `.env` и используй app password почтового провайдера. При ошибке backend теперь пишет подробную SMTP-причину в логи контейнера:
+Логи backend в Docker:
 
 ```bash
 docker compose logs -f backend
 ```
+
+### Переменные окружения
+
+Основные переменные лежат в `.env.example`:
+
+- `NGINX_HOST_PORT`
+- `AUTH_ALLOW_ANY_EMAIL_DOMAIN`
+- `EMAIL_CODE_TTL_SEC`
+- `EMAIL_CODE_RESEND_INTERVAL_SEC`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_USE_TLS`
+- `SMTP_USE_SSL`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME`
+- `ADMIN_EMAIL`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
 
 ## Миграции
 
