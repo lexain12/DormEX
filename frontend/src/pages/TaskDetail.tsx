@@ -908,6 +908,139 @@ const TaskDetail = () => {
     task,
   ]);
 
+  const taskActionsCard = task ? (
+    <div className="card-surface space-y-3 p-5">
+      {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
+        <>
+          {fixedTaskPrice !== null && (
+            <button
+              onClick={openTaskFixedPriceModal}
+              className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+            >
+              Откликнуться за {fixedTaskPrice} ₽
+            </button>
+          )}
+          <button
+            onClick={() => setActionModal("service")}
+            className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+              fixedTaskPrice !== null
+                ? "border border-border text-foreground hover:bg-accent"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
+            }`}
+          >
+            <Send className="w-4 h-4" />
+            Предложить, как выполнить
+          </button>
+          <button
+            onClick={openCustomPriceModal}
+            className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
+          >
+            Назвать свою цену
+          </button>
+        </>
+      )}
+
+      {ownPendingOffer && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
+          Ваш отклик уже отправлен. Заказчик увидит его в списке и сможет открыть переговоры по условиям.
+        </div>
+      )}
+
+      <button
+        onClick={() => {
+          if (!chatId) {
+            toast({
+              title: "Чат недоступен",
+              description: "Чат появляется после выбора исполнителя.",
+            });
+            return;
+          }
+          if (!isChatParticipant) {
+            toast({
+              title: "Чат недоступен",
+              description: "Чат доступен только заказчику и выбранному исполнителю.",
+            });
+            return;
+          }
+          setActionModal("message");
+        }}
+        disabled={!canOpenChat}
+        className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        <MessageSquare className="w-4 h-4" />
+        Открыть чат
+      </button>
+
+      {isTaskOwner && task.status !== "cancelled" && task.status !== "done" && (
+        <button
+          onClick={() => setActionModal("cancel-task")}
+          className="w-full h-11 rounded-lg border border-destructive/40 text-destructive font-medium text-sm hover:bg-destructive/5 transition-colors"
+        >
+          Отменить задачу
+        </button>
+      )}
+
+      {canManageProgress && (
+        <button
+          onClick={() => confirmCompletionMutation.mutate()}
+          className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+          disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
+        >
+          {confirmCompletionMutation.isPending
+            ? "Подтверждаем..."
+            : isAwaitingOtherPartyConfirmation
+              ? "Подтверждение отправлено"
+              : hasCounterpartConfirmed
+                ? "Подтвердить и закрыть сделку"
+                : hasOpenDispute
+                  ? "Спор уже открыт"
+                  : isTaskOwner
+                    ? "Подтвердить, что всё выполнено"
+                    : "Подтвердить сдачу работы"}
+        </button>
+      )}
+
+      {task.status === "done" && reviewSummary?.can_leave_review && (
+        <button
+          type="button"
+          onClick={() => setActionModal("review")}
+          className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+        >
+          Оставить отзыв по сделке
+        </button>
+      )}
+
+      {isAwaitingOtherPartyConfirmation && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          {isTaskOwner
+            ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
+            : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
+        </div>
+      )}
+
+      {hasCounterpartConfirmed && !completionConfirmedByMe && !hasOpenDispute && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          {isTaskOwner
+            ? "Исполнитель уже подтвердил выполнение. Если результат вас устраивает, подтвердите сделку и она сразу закроется."
+            : "Заказчик уже подтвердил выполнение. Подтвердите сдачу работы, чтобы закрыть сделку."}
+        </div>
+      )}
+
+      {hasOpenDispute && (
+        <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
+          По задаче открыт спор. До его урегулирования подтверждение завершения недоступно.
+        </div>
+      )}
+
+      <div className="pt-3 border-t border-border">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Clock className="w-3.5 h-3.5" />
+          Создано {task.createdAt}
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!hasValidTaskId) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6">
@@ -1016,6 +1149,10 @@ const TaskDetail = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="xl:hidden">
+                {taskActionsCard}
               </div>
 
               <div className="card-surface p-4 sm:p-6">
@@ -1172,9 +1309,9 @@ const TaskDetail = () => {
                             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
                               {isOwnPendingOffer && (
                                 <>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
+                                <button
+                                  type="button"
+                                  onClick={() => {
                                       setEditingOfferId(offer.id);
                                       setEditOfferMessage(offer.message ?? "");
                                       setEditOfferPaymentType(offer.payment_type);
@@ -1183,14 +1320,14 @@ const TaskDetail = () => {
                                       setEditOfferError(null);
                                       setActionModal("edit-offer");
                                     }}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                   >
                                     Редактировать
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => withdrawOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                     disabled={withdrawOfferMutation.isPending}
                                   >
                                     Отозвать отклик
@@ -1201,7 +1338,7 @@ const TaskDetail = () => {
                               {canCounterOffer && (
                                 <Link
                                   to={`/task/${numericTaskId}/offers/${offer.id}/negotiation`}
-                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                  className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:text-sm"
                                 >
                                   Открыть переговоры
                                 </Link>
@@ -1212,7 +1349,7 @@ const TaskDetail = () => {
                                   <button
                                     type="button"
                                     onClick={() => acceptOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:w-auto sm:text-sm"
                                     disabled={acceptOfferMutation.isPending}
                                   >
                                     Выбрать исполнителя
@@ -1220,7 +1357,7 @@ const TaskDetail = () => {
                                   <button
                                     type="button"
                                     onClick={() => rejectOfferMutation.mutate(offer.id)}
-                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:text-sm"
+                                    className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:w-auto sm:text-sm"
                                     disabled={rejectOfferMutation.isPending}
                                   >
                                     Отклонить
@@ -1307,137 +1444,8 @@ const TaskDetail = () => {
             </div>
 
             <div className="w-full shrink-0 space-y-4 xl:sticky xl:top-20 xl:w-80 xl:self-start">
-              <div className="card-surface space-y-3 p-5">
-                {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
-                  <>
-                    {fixedTaskPrice !== null && (
-                      <button
-                        onClick={openTaskFixedPriceModal}
-                        className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      >
-                        Откликнуться за {fixedTaskPrice} ₽
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setActionModal("service")}
-                      className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
-                        fixedTaskPrice !== null
-                          ? "border border-border text-foreground hover:bg-accent"
-                          : "bg-primary text-primary-foreground hover:bg-primary/90"
-                      }`}
-                    >
-                      <Send className="w-4 h-4" />
-                      Предложить, как выполнить
-                    </button>
-                    <button
-                      onClick={openCustomPriceModal}
-                      className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
-                    >
-                      Назвать свою цену
-                    </button>
-                  </>
-                )}
-
-                {ownPendingOffer && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
-                    Ваш отклик уже отправлен. Заказчик увидит его в списке и сможет открыть переговоры по условиям.
-                  </div>
-                )}
-
-                <button
-                  onClick={() => {
-                    if (!chatId) {
-                      toast({
-                        title: "Чат недоступен",
-                        description: "Чат появляется после выбора исполнителя.",
-                      });
-                      return;
-                    }
-                    if (!isChatParticipant) {
-                      toast({
-                        title: "Чат недоступен",
-                        description: "Чат доступен только заказчику и выбранному исполнителю.",
-                      });
-                      return;
-                    }
-                    setActionModal("message");
-                  }}
-                  disabled={!canOpenChat}
-                  className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Открыть чат
-                </button>
-
-                {isTaskOwner && task.status !== "cancelled" && task.status !== "done" && (
-                  <button
-                    onClick={() => setActionModal("cancel-task")}
-                    className="w-full h-11 rounded-lg border border-destructive/40 text-destructive font-medium text-sm hover:bg-destructive/5 transition-colors"
-                  >
-                    Отменить задачу
-                  </button>
-                )}
-
-                {canManageProgress && (
-                  <>
-                    <button
-                      onClick={() => confirmCompletionMutation.mutate()}
-                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                      disabled={confirmCompletionMutation.isPending || isAwaitingOtherPartyConfirmation || hasOpenDispute}
-                    >
-                      {confirmCompletionMutation.isPending
-                        ? "Подтверждаем..."
-                        : isAwaitingOtherPartyConfirmation
-                          ? "Подтверждение отправлено"
-                          : hasCounterpartConfirmed
-                            ? "Подтвердить и закрыть сделку"
-                            : hasOpenDispute
-                              ? "Спор уже открыт"
-                          : isTaskOwner
-                            ? "Подтвердить, что всё выполнено"
-                            : "Подтвердить сдачу работы"}
-                    </button>
-                  </>
-                )}
-
-                {task.status === "done" && reviewSummary?.can_leave_review && (
-                  <button
-                    type="button"
-                    onClick={() => setActionModal("review")}
-                    className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-                  >
-                    Оставить отзыв по сделке
-                  </button>
-                )}
-
-                {isAwaitingOtherPartyConfirmation && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    {isTaskOwner
-                      ? "Вы уже подтвердили результат. Сделка закроется, когда исполнитель ответит со своей стороны."
-                      : "Вы уже подтвердили сдачу работы. Сделка закроется после ответа заказчика."}
-                  </div>
-                )}
-
-                {hasCounterpartConfirmed && !completionConfirmedByMe && !hasOpenDispute && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    {isTaskOwner
-                      ? "Исполнитель уже подтвердил выполнение. Если результат вас устраивает, подтвердите сделку и она сразу закроется."
-                      : "Заказчик уже подтвердил выполнение. Подтвердите сдачу работы, чтобы закрыть сделку."}
-                  </div>
-                )}
-
-                {hasOpenDispute && (
-                  <div className="rounded-lg border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
-                    По задаче открыт спор. До его урегулирования подтверждение завершения недоступно.
-                  </div>
-                )}
-
-                <div className="pt-3 border-t border-border">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="w-3.5 h-3.5" />
-                    Создано {task.createdAt}
-                  </div>
-                </div>
+              <div className="hidden xl:block">
+                {taskActionsCard}
               </div>
 
               <div className="card-surface p-4">

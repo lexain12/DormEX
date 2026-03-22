@@ -175,11 +175,11 @@ class PlatformService:
     def list_dormitories(self, current_user: CurrentUserContext) -> list[dict[str, Any]]:
         return self.repository.list_dormitories(current_user.university_id)
 
-    def get_user_profile(self, user_id: int) -> dict[str, Any]:
-        return self.repository.get_user_profile(user_id)
+    def get_user_profile(self, user_id: int, current_user: CurrentUserContext) -> dict[str, Any]:
+        return self.repository.get_user_profile(user_id, current_university_id=current_user.university_id)
 
-    def list_user_reviews(self, user_id: int) -> list[dict[str, Any]]:
-        return self.repository.list_user_reviews(user_id)
+    def list_user_reviews(self, user_id: int, current_user: CurrentUserContext) -> list[dict[str, Any]]:
+        return self.repository.list_user_reviews(user_id, current_university_id=current_user.university_id)
 
     def list_tasks(self, current_user: CurrentUserContext, filters: dict[str, Any], limit: int, offset: int) -> dict[str, Any]:
         return self.repository.list_tasks(
@@ -212,8 +212,19 @@ class PlatformService:
     def list_my_tasks(self, current_user: CurrentUserContext, role: str, status: str) -> list[dict[str, Any]]:
         return self.repository.list_user_tasks(current_user.id, role=role, status=status)
 
-    def list_user_tasks(self, user_id: int, role: str, status: str) -> list[dict[str, Any]]:
-        return self.repository.list_user_tasks(user_id, role=role, status=status)
+    def list_user_tasks(
+        self,
+        user_id: int,
+        role: str,
+        status: str,
+        current_user: CurrentUserContext,
+    ) -> list[dict[str, Any]]:
+        return self.repository.list_user_tasks(
+            user_id,
+            role=role,
+            status=status,
+            current_university_id=current_user.university_id,
+        )
 
     def list_task_offers(self, task_id: int, current_user: CurrentUserContext) -> list[dict[str, Any]]:
         return self.repository.list_task_offers(task_id, university_id=current_user.university_id)

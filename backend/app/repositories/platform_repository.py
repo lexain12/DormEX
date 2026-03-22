@@ -905,9 +905,33 @@ class PlatformRepository:
                 )
                 return list(cursor.fetchall())
 
-    def get_user_profile(self, user_id: int) -> dict[str, Any]:
+    def _ensure_user_visible_in_university(
+        self,
+        cursor,
+        *,
+        user_id: int,
+        current_university_id: int,
+    ) -> None:
+        cursor.execute(
+            """
+            SELECT 1
+            FROM users
+            WHERE id = %s
+              AND university_id = %s
+            """,
+            (user_id, current_university_id),
+        )
+        if cursor.fetchone() is None:
+            raise DomainValidationError("Пользователь не найден")
+
+    def get_user_profile(self, user_id: int, *, current_university_id: int) -> dict[str, Any]:
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                self._ensure_user_visible_in_university(
+                    cursor,
+                    user_id=user_id,
+                    current_university_id=current_university_id,
+                )
                 cursor.execute(
                     """
                     SELECT
@@ -961,8 +985,9 @@ class PlatformRepository:
                           AND a.status = 'completed'
                     ) AS performer_tasks ON TRUE
                     WHERE u.id = %s
+                      AND u.university_id = %s
                     """,
-                    (user_id,),
+                    (user_id, current_university_id),
                 )
                 row = cursor.fetchone()
 
@@ -1002,9 +1027,14 @@ class PlatformRepository:
             "badges": badges,
         }
 
-    def list_user_reviews(self, user_id: int) -> list[dict[str, Any]]:
+    def list_user_reviews(self, user_id: int, *, current_university_id: int) -> list[dict[str, Any]]:
         with get_connection() as connection:
             with connection.cursor() as cursor:
+                self._ensure_user_visible_in_university(
+                    cursor,
+                    user_id=user_id,
+                    current_university_id=current_university_id,
+                )
                 cursor.execute(
                     """
                     SELECT
@@ -1026,13 +1056,16 @@ class PlatformRepository:
                         END AS target_role
                     FROM reviews r
                     JOIN users a ON a.id = r.author_id
+                    JOIN users target_user ON target_user.id = r.target_user_id
                     JOIN task_assignments assignment ON assignment.id = r.task_assignment_id
                     JOIN tasks t ON t.id = r.task_id
                     WHERE r.target_user_id = %s
                       AND r.is_visible = TRUE
+                      AND target_user.university_id = %s
+                      AND t.university_id = %s
                     ORDER BY r.created_at DESC, r.id DESC
                     """,
-                    (user_id,),
+                    (user_id, current_university_id, current_university_id),
                 )
                 rows = list(cursor.fetchall())
 
@@ -1407,6 +1440,7 @@ class PlatformRepository:
         *,
         role: str,
         status: str,
+        current_university_id: int,
     ) -> list[dict[str, Any]]:
         if role not in ("customer", "performer"):
             raise DomainValidationError("role must be customer or performer")
@@ -1453,13 +1487,19 @@ class PlatformRepository:
             LEFT JOIN users performer ON performer.id = assignment.performer_id
             LEFT JOIN dormitories d ON d.id = t.dormitory_id
             WHERE {owner_condition}
+              AND t.university_id = %s
               AND {status_condition}
             ORDER BY COALESCE(t.completed_at, t.cancelled_at, t.created_at) DESC, t.id DESC
         """
 
         with get_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (user_id,))
+                self._ensure_user_visible_in_university(
+                    cursor,
+                    user_id=user_id,
+                    current_university_id=current_university_id,
+                )
+                cursor.execute(query, (user_id, current_university_id))
                 rows = list(cursor.fetchall())
                 items: list[dict[str, Any]] = []
                 for row in rows:
