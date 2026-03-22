@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from .dependencies import get_current_user_context
+from .dependencies import get_authenticated_admin_context, get_current_user_context
 from ..schemas.offer import (
     CounterOfferRequest,
     CounterOfferResponse,
@@ -116,3 +116,11 @@ def reject_offer(
     return OfferResponse.model_validate(
         offer_service.reject_offer(offer_id=offer_id, current_user=current_user)
     )
+
+
+@router.delete("/admin/offers", tags=["admin"], response_model=dict)
+def delete_all_offers(
+    current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
+) -> dict:
+    offer_service.delete_all_offers_as_admin(current_user)
+    return {"status": "deleted"}

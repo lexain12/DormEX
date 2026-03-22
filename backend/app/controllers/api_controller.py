@@ -143,7 +143,7 @@ def list_registration_dormitories(email: str = Query(..., min_length=3)) -> list
     return platform_service.list_dormitories_by_email(email)
 
 
-@router.post("/admin/accounts", tags=["admin"], include_in_schema=False)
+@router.post("/admin/accounts", tags=["admin"], include_in_schema=True)
 def create_admin_account(
     payload: AdminCreateRequest,
     current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],

@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Query, Request, WebSocket, WebSocketDisconnect
 
-from .dependencies import current_user_service, get_current_user_context
+from .dependencies import current_user_service, get_authenticated_admin_context, get_current_user_context
 from ..schemas.notification import (
     NotificationListResponse,
     NotificationPreferencesResponse,
@@ -106,6 +106,14 @@ def delete_web_push_subscription(
             subscription_id=subscription_id,
         )
     )
+
+
+@router.delete("/admin/notifications", tags=["admin"], response_model=dict)
+def delete_all_notifications(
+    current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
+) -> dict:
+    notification_service.delete_all_notifications_as_admin(current_user)
+    return {"status": "deleted"}
 
 
 @router.websocket("/api/v1/ws/notifications")

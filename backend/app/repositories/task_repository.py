@@ -636,3 +636,11 @@ class TaskRepository:
                 "name": row["dormitory_name"],
             },
         }
+
+    def delete_all_tasks(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM reviews")
+                cursor.execute("DELETE FROM task_assignments")
+                cursor.execute("DELETE FROM tasks")
+            connection.commit()

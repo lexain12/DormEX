@@ -34,152 +34,8 @@ class PlatformRepository:
         self.admin_full_name = (os.getenv("ADMIN_FULL_NAME", "Администратор DormEX") or "").strip()
 
     def ensure_seed_data(self) -> None:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO universities (name, slug, email_domain)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (email_domain)
-                    DO UPDATE SET
-                        name = EXCLUDED.name,
-                        slug = EXCLUDED.slug,
-                        is_active = TRUE
-                    RETURNING id
-                    """,
-                    ("МФТИ", "mipt", self.default_university_domain),
-                )
-                default_university_id = cursor.fetchone()["id"]
-
-                cursor.execute(
-                    """
-                    INSERT INTO universities (name, slug, email_domain)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (email_domain)
-                    DO UPDATE SET
-                        name = EXCLUDED.name,
-                        slug = EXCLUDED.slug,
-                        is_active = TRUE
-                    RETURNING id
-                    """,
-                    ("Демо университет", "demo-university", self.demo_email_domain),
-                )
-                university_id = cursor.fetchone()["id"]
-
-                self._ensure_dormitories(
-                    cursor,
-                    university_id=default_university_id,
-                    address_prefix="МФТИ кампус",
-                )
-                dormitory_ids = self._ensure_dormitories(
-                    cursor,
-                    university_id=university_id,
-                    address_prefix="Кампус",
-                )
-
-                demo_users = {
-                    "alexey@campus.test": {
-                        "username": "alexey",
-                        "full_name": "Алексей Михайлов",
-                        "dormitory_id": dormitory_ids["Общежитие №1"],
-                    },
-                    "maria@campus.test": {
-                        "username": "maria",
-                        "full_name": "Мария Петрова",
-                        "dormitory_id": dormitory_ids["Общежитие №2"],
-                    },
-                    "nikita@campus.test": {
-                        "username": "nikita",
-                        "full_name": "Никита Смирнов",
-                        "dormitory_id": dormitory_ids["Общежитие №3"],
-                    },
-                }
-
-                demo_user_ids: dict[str, int] = {}
-                for email, data in demo_users.items():
-                    cursor.execute(
-                        """
-                        INSERT INTO users (
-                            email,
-                            email_verified_at,
-                            username,
-                            full_name,
-                            role,
-                            university_id,
-                            dormitory_id,
-                            bio
-                        )
-                        VALUES (%s, CURRENT_TIMESTAMP, %s, %s, 'student', %s, %s, %s)
-                        ON CONFLICT (email)
-                        DO UPDATE SET
-                            email_verified_at = COALESCE(users.email_verified_at, CURRENT_TIMESTAMP),
-                            username = COALESCE(users.username, EXCLUDED.username),
-                            university_id = EXCLUDED.university_id,
-                            dormitory_id = COALESCE(users.dormitory_id, EXCLUDED.dormitory_id),
-                            bio = COALESCE(users.bio, EXCLUDED.bio),
-                            updated_at = CURRENT_TIMESTAMP
-                        RETURNING id
-                        """,
-                        (
-                            email,
-                            data["username"],
-                            data["full_name"],
-                            university_id,
-                            data["dormitory_id"],
-                            f"Demo-пользователь {data['full_name']}",
-                        ),
-                    )
-                    demo_user_ids[email] = cursor.fetchone()["id"]
-
-                cursor.execute("SELECT COUNT(*) AS total FROM tasks")
-                tasks_total = cursor.fetchone()["total"]
-
-                if tasks_total == 0:
-                    self._seed_demo_tasks(cursor, university_id, dormitory_ids, demo_user_ids)
-
-                admin_university_id = default_university_id
-                admin_domain = self.admin_email.split("@")[-1] if "@" in self.admin_email else ""
-                if admin_domain == self.demo_email_domain or (admin_domain and self.auth_allow_any_email_domain):
-                    admin_university_id = university_id
-
-                cursor.execute(
-                    """
-                    INSERT INTO users (
-                        email,
-                        email_verified_at,
-                        username,
-                        password_hash,
-                        full_name,
-                        role,
-                        university_id,
-                        bio
-                    )
-                    VALUES (%s, CURRENT_TIMESTAMP, %s, %s, %s, 'admin', %s, %s)
-                    ON CONFLICT (email)
-                    DO UPDATE SET
-                        username = EXCLUDED.username,
-                        password_hash = EXCLUDED.password_hash,
-                        full_name = EXCLUDED.full_name,
-                        role = 'admin',
-                        university_id = EXCLUDED.university_id,
-                        updated_at = CURRENT_TIMESTAMP
-                    """,
-                    (
-                        self.admin_email,
-                        self.admin_username,
-                        hash_password(self.admin_password),
-                        self.admin_full_name or "Администратор DormEX",
-                        admin_university_id,
-                        "Системный административный аккаунт",
-                    ),
-                )
-
-                self._refresh_user_metrics(
-                    cursor,
-                    list(demo_user_ids.values()),
-                )
-
-            connection.commit()
+        # Demo/reset data is now owned by Liquibase changesets.
+        return None
 
     def create_email_code(self, email: str, university_id: int, code: str) -> dict[str, Any]:
         normalized_email = email.lower().strip()
@@ -350,7 +206,7 @@ class PlatformRepository:
                             role,
                             university_id
                         )
-                        VALUES (%s, CURRENT_TIMESTAMP, %s, 'student', %s)
+                        VALUES (%s, CURRENT_TIMESTAMP, %s, 'user', %s)
                         RETURNING id
                         """,
                         (email, fallback_name, code_row["university_id"]),
@@ -463,7 +319,7 @@ class PlatformRepository:
                         university_id,
                         dormitory_id
                     )
-                    VALUES (%s, %s, %s, %s, 'student', %s, %s)
+                    VALUES (%s, %s, %s, %s, 'user', %s, %s)
                     RETURNING id
                     """,
                     (
@@ -1115,7 +971,7 @@ class PlatformRepository:
 
         badges: list[str] = []
         if row["dormitory_id"]:
-            badges.append("verified_student")
+            badges.append("verified_user")
         if float(row["rating_avg"] or 0) >= 4.5 and int(row["reviews_count"] or 0) > 0:
             badges.append("fast_responder")
         if int(row["completed_tasks_count"] or 0) >= 1:

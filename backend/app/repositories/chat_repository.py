@@ -155,3 +155,10 @@ class ChatRepository:
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
+
+    def delete_all_chats(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM chat_messages")
+                cursor.execute("DELETE FROM task_chats")
+            connection.commit()

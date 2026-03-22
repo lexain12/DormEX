@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
-from .dependencies import get_current_user_context
+from .dependencies import get_authenticated_admin_context, get_current_user_context
 from ..schemas.review import ReviewCreateRequest, ReviewUpdateRequest, TaskReviewResponse
 from ..schemas.task import (
     TaskCancelRequest,
@@ -168,3 +168,11 @@ def create_task_review(
     return TaskReviewResponse.model_validate(
         review_service.create_task_review(task_id=task_id, payload=payload, current_user=current_user)
     )
+
+
+@router.delete("/admin/tasks", tags=["admin"], response_model=dict)
+def delete_all_tasks(
+    current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
+) -> dict:
+    task_service.delete_all_tasks_as_admin(current_user)
+    return {"status": "deleted"}

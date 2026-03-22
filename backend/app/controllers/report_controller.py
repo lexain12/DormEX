@@ -1,6 +1,8 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
-from .dependencies import get_current_user_context
+from .dependencies import get_authenticated_admin_context, get_current_user_context
 from ..schemas.report import ModerationResolveReportRequest, ReportCreateRequest, ReportResponse
 from ..services.current_user_service import CurrentUserContext
 from ..services.report_service import ReportService
@@ -36,3 +38,11 @@ def resolve_report(
     return ReportResponse.model_validate(
         report_service.resolve_report(report_id=report_id, payload=payload.model_dump(), current_user=current_user)
     )
+
+
+@router.delete("/admin/reports", tags=["admin"], response_model=dict)
+def delete_all_reports(
+    current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
+) -> dict:
+    report_service.delete_all_reports_as_admin(current_user)
+    return {"status": "deleted"}

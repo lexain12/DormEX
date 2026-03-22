@@ -78,3 +78,17 @@ databaseChangeLog:
         - sqlFile:
             path: sql/004_clear_demo_passwords.sql
             relativeToChangelogFile: true
+  - changeSet:
+      id: 005-update-user-roles
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/005_update_roles.sql
+            relativeToChangelogFile: true
+  - changeSet:
+      id: 006-reset-seed-data
+      author: codex
+      changes:
+        - sqlFile:
+            path: sql/006_reset_seed_data.sql
+            relativeToChangelogFile: true

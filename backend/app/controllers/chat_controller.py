@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 
-from .dependencies import current_user_service, get_current_user_context
+from .dependencies import current_user_service, get_authenticated_admin_context, get_current_user_context
 from ..schemas.chat import ChatMessageResponse, ChatResponse, SendMessageRequest
 from ..schemas.notification import StatusResponse
 from ..services.chat_service import ChatService
@@ -61,6 +61,14 @@ def mark_chat_read(
     current_user: CurrentUserContext = Depends(get_current_user_context),
 ) -> StatusResponse:
     return StatusResponse.model_validate(chat_service.mark_chat_read(chat_id=chat_id, current_user=current_user))
+
+
+@router.delete("/admin/chats", tags=["admin"], response_model=dict)
+def delete_all_chats(
+    current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
+) -> dict:
+    chat_service.delete_all_chats_as_admin(current_user)
+    return {"status": "deleted"}
 
 
 @router.websocket("/api/v1/ws/chats/{chat_id}")
