@@ -24,6 +24,7 @@ import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 
 type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "review" | null;
+type PriceModalMode = "custom" | "task-fixed";
 
 const DEMO_POLL_INTERVAL_MS = 3_000;
 
@@ -55,6 +56,7 @@ const TaskDetail = () => {
   const [serviceEta, setServiceEta] = useState("");
   const [priceValue, setPriceValue] = useState("");
   const [priceComment, setPriceComment] = useState("");
+  const [priceModalMode, setPriceModalMode] = useState<PriceModalMode>("custom");
   const [messageValue, setMessageValue] = useState("");
   const [counterMessage, setCounterMessage] = useState("");
   const [counterPaymentType, setCounterPaymentType] = useState<ApiPaymentType>("fixed_price");
@@ -88,6 +90,9 @@ const TaskDetail = () => {
   });
   const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
   const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
+  const fixedTaskPrice = taskQuery.data?.payment_type === "fixed_price" && typeof taskQuery.data?.price_amount === "number"
+    ? taskQuery.data.price_amount
+    : null;
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
@@ -476,6 +481,7 @@ const TaskDetail = () => {
 
   const closeActionModal = () => {
     setActionModal(null);
+    setPriceModalMode("custom");
     setServiceError(null);
     setPriceError(null);
     setMessageError(null);
@@ -522,7 +528,9 @@ const TaskDetail = () => {
 
   const handlePriceSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    const normalizedPrice = Number(priceValue);
+    const normalizedPrice = priceModalMode === "task-fixed" && fixedTaskPrice !== null
+      ? fixedTaskPrice
+      : Number(priceValue);
 
     if (!priceValue || Number.isNaN(normalizedPrice) || normalizedPrice <= 0) {
       setPriceError("Введите корректную сумму предложения.");
@@ -539,7 +547,7 @@ const TaskDetail = () => {
       });
 
       toast({
-        title: "Цена отправлена",
+        title: priceModalMode === "task-fixed" ? "Отклик по цене заказчика отправлен" : "Цена отправлена",
         description: "Ценовой отклик добавлен к задаче.",
       });
 
@@ -549,6 +557,26 @@ const TaskDetail = () => {
     } catch (error) {
       setPriceError(error instanceof Error ? error.message : "Не удалось отправить цену");
     }
+  };
+
+  const openCustomPriceModal = () => {
+    setPriceModalMode("custom");
+    setPriceValue("");
+    setPriceComment("");
+    setPriceError(null);
+    setActionModal("price");
+  };
+
+  const openTaskFixedPriceModal = () => {
+    if (fixedTaskPrice === null) {
+      return;
+    }
+
+    setPriceModalMode("task-fixed");
+    setPriceValue(String(fixedTaskPrice));
+    setPriceComment("");
+    setPriceError(null);
+    setActionModal("price");
   };
 
   const handleMessageSubmit = async (event: FormEvent) => {
@@ -1275,15 +1303,27 @@ const TaskDetail = () => {
               <div className="card-surface space-y-3 p-5">
                 {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
                   <>
+                    {fixedTaskPrice !== null && (
+                      <button
+                        onClick={openTaskFixedPriceModal}
+                        className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
+                      >
+                        Откликнуться за {fixedTaskPrice} ₽
+                      </button>
+                    )}
                     <button
                       onClick={() => setActionModal("service")}
-                      className="w-full h-11 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+                      className={`w-full h-11 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                        fixedTaskPrice !== null
+                          ? "border border-border text-foreground hover:bg-accent"
+                          : "bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
                     >
                       <Send className="w-4 h-4" />
                       Предложить, как выполнить
                     </button>
                     <button
-                      onClick={() => setActionModal("price")}
+                      onClick={openCustomPriceModal}
                       className="w-full h-11 rounded-lg border border-border text-foreground font-medium text-sm hover:bg-accent transition-colors"
                     >
                       Назвать свою цену
@@ -1544,26 +1584,38 @@ const TaskDetail = () => {
       <Dialog open={actionModal === "price"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Предложить цену</DialogTitle>
-            <DialogDescription>Укажите вашу стоимость и при необходимости добавьте комментарий.</DialogDescription>
+            <DialogTitle>{priceModalMode === "task-fixed" ? "Отклик по цене заказчика" : "Предложить цену"}</DialogTitle>
+            <DialogDescription>
+              {priceModalMode === "task-fixed"
+                ? "Цена уже зафиксирована заказчиком. При желании добавьте комментарий к отклику."
+                : "Укажите вашу стоимость и при необходимости добавьте комментарий."}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handlePriceSubmit}>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">Сумма</label>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                {priceModalMode === "task-fixed" ? "Зафиксированная цена" : "Сумма"}
+              </label>
               <div className="relative">
                 <input
                   type="number"
                   min={1}
                   value={priceValue}
+                  readOnly={priceModalMode === "task-fixed"}
                   onChange={(event) => {
                     setPriceValue(event.target.value);
                     if (priceError) setPriceError(null);
                   }}
-                  className="w-full h-10 px-3 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full h-10 px-3 pr-8 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring read-only:cursor-default read-only:bg-secondary/60"
                   placeholder="0"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₽</span>
               </div>
+              {priceModalMode === "task-fixed" && (
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Если хотите предложить другую сумму, используйте кнопку «Назвать свою цену».
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1.5">Комментарий</label>
@@ -1581,7 +1633,11 @@ const TaskDetail = () => {
               className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
               disabled={createOfferMutation.isPending}
             >
-              {createOfferMutation.isPending ? "Отправляем..." : "Отправить цену"}
+              {createOfferMutation.isPending
+                ? "Отправляем..."
+                : priceModalMode === "task-fixed"
+                  ? "Отправить отклик"
+                  : "Отправить цену"}
             </button>
           </form>
         </DialogContent>
