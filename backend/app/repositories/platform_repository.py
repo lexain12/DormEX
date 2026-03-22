@@ -872,6 +872,34 @@ class PlatformRepository:
             "user_id": user_id,
         }
 
+    def _ensure_dormitories(
+        self,
+        cursor: Any,
+        *,
+        university_id: int,
+        address_prefix: str,
+    ) -> dict[str, int]:
+        dormitory_ids: dict[str, int] = {}
+        for name, code in (
+            ("Общежитие №1", "D1"),
+            ("Общежитие №2", "D2"),
+            ("Общежитие №3", "D3"),
+        ):
+            cursor.execute(
+                """
+                INSERT INTO dormitories (university_id, name, code, address)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (university_id, name)
+                DO UPDATE SET
+                    code = EXCLUDED.code,
+                    address = EXCLUDED.address
+                RETURNING id
+                """,
+                (university_id, name, code, f"{address_prefix}, {name}"),
+            )
+            dormitory_ids[name] = cursor.fetchone()["id"]
+        return dormitory_ids
+
     def create_refresh_session(
         self,
         user_id: int,
