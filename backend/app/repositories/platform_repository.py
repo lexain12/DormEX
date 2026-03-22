@@ -1837,16 +1837,9 @@ class PlatformRepository:
                 if offer["task_status"] not in ("open", "offers"):
                     raise DomainValidationError("По этой задаче уже нельзя выбрать исполнителя")
 
-                agreed_payment_type = offer["payment_type"]
-                agreed_price_amount = offer["price_amount"]
-                agreed_barter_description = offer["barter_description"]
-                if agreed_payment_type == "negotiable":
-                    agreed_payment_type = offer["task_payment_type"]
-                    agreed_price_amount = offer["task_price_amount"]
-                    agreed_barter_description = offer["task_barter_description"]
-
-                if agreed_payment_type == "negotiable":
-                    raise DomainValidationError("Перед выбором исполнителя зафиксируйте цену или barter условия")
+                agreed_payment_type, agreed_price_amount, agreed_barter_description = (
+                    self._resolve_agreed_offer_terms(offer)
+                )
 
                 cursor.execute(
                     """
@@ -3115,6 +3108,36 @@ class PlatformRepository:
             raise DomainValidationError("Некорректный тип оплаты")
 
         return normalized_payment_type, normalized_price_amount, normalized_barter_description
+
+    def _resolve_agreed_offer_terms(
+        self,
+        offer: dict[str, Any],
+    ) -> tuple[str, int | None, str | None]:
+        agreed_payment_type = offer["payment_type"]
+        agreed_price_amount = offer["price_amount"]
+        agreed_barter_description = offer["barter_description"]
+
+        if agreed_payment_type == "negotiable":
+            agreed_payment_type = offer["task_payment_type"]
+            agreed_price_amount = offer["task_price_amount"]
+            agreed_barter_description = offer["task_barter_description"]
+
+        if agreed_payment_type == "fixed_price":
+            if agreed_price_amount is None or agreed_price_amount <= 0:
+                raise DomainValidationError("Для fixed_price требуется положительная цена")
+            agreed_barter_description = None
+        elif agreed_payment_type == "barter":
+            if agreed_barter_description is None or not agreed_barter_description.strip():
+                raise DomainValidationError("Для barter требуется описание обмена")
+            agreed_price_amount = None
+            agreed_barter_description = agreed_barter_description.strip()
+        elif agreed_payment_type == "negotiable":
+            agreed_price_amount = None
+            agreed_barter_description = None
+        else:
+            raise DomainValidationError("Некорректный тип оплаты")
+
+        return agreed_payment_type, agreed_price_amount, agreed_barter_description
 
     def _serialize_me(self, row: dict[str, Any]) -> dict[str, Any]:
         return {
