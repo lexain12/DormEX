@@ -86,6 +86,8 @@ const TaskDetail = () => {
     enabled: hasValidTaskId,
     refetchInterval: hasValidTaskId ? 60_000 : false,
   });
+  const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
+  const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
 
   const offersQuery = useQuery({
     queryKey: queryKeys.offers(numericTaskId),
@@ -124,11 +126,13 @@ const TaskDetail = () => {
   const chatIdFromTask = typeof taskQuery.data?.chat_id === "number" ? taskQuery.data.chat_id : null;
   const chatIdFromList = chatsQuery.data?.find((chat) => chat.task_id === numericTaskId)?.id ?? null;
   const chatId = chatIdFromTask ?? chatIdFromList;
+  const isChatParticipant = isTaskOwner || isAssignedPerformer;
+  const canOpenChat = Boolean(chatId && isChatParticipant);
 
   const messagesQuery = useQuery({
     queryKey: queryKeys.chatMessages(chatId ?? 0),
     queryFn: () => chatsService.listMessages(chatId as number, { limit: 50 }),
-    enabled: actionModal === "message" && Boolean(chatId),
+    enabled: actionModal === "message" && canOpenChat,
     refetchInterval: actionModal === "message" ? 15_000 : false,
   });
 
@@ -174,7 +178,7 @@ const TaskDetail = () => {
   });
 
   useRealtimeChannel({
-    enabled: actionModal === "message" && Boolean(chatId),
+    enabled: actionModal === "message" && canOpenChat,
     path: `/ws/chats/${chatId ?? 0}`,
     onMessage: (message: { items?: ChatMessageDto[] }) => {
       if (!chatId) {
@@ -194,10 +198,10 @@ const TaskDetail = () => {
   });
 
   useEffect(() => {
-    if (actionModal === "message" && chatId) {
+    if (actionModal === "message" && canOpenChat && chatId) {
       void chatsService.markRead(chatId).catch(() => undefined);
     }
-  }, [actionModal, chatId]);
+  }, [actionModal, canOpenChat, chatId]);
 
   const createOfferMutation = useMutation({
     mutationFn: (payload: { message: string; payment_type: "fixed_price" | "negotiable"; price_amount: number | null }) => (
@@ -597,6 +601,11 @@ const TaskDetail = () => {
       return;
     }
 
+    if (!isChatParticipant) {
+      setMessageError("Чат доступен только заказчику и выбранному исполнителю.");
+      return;
+    }
+
     const normalizedMessage = messageValue.trim();
 
     if (!normalizedMessage) {
@@ -744,8 +753,6 @@ const TaskDetail = () => {
           task.status === "done" ? "status-done" : "status-cancelled";
 
   const canRespond = taskQuery.data?.can_respond ?? (task?.status === "open" || task?.status === "offers");
-  const isTaskOwner = taskQuery.data?.customer?.id === user?.id;
-  const isAssignedPerformer = taskQuery.data?.accepted_offer?.performer?.id === user?.id;
   const canChoosePerformer = taskQuery.data?.can_choose_performer ?? (isTaskOwner && task?.status === "offers");
   const canManageProgress = Boolean((isTaskOwner || isAssignedPerformer) && task?.status === "progress");
   const completionStatus = taskQuery.data?.completion_confirmation_status ?? null;
@@ -793,7 +800,7 @@ const TaskDetail = () => {
       return;
     }
 
-    if (autoPanel === "chat" && chatId) {
+    if (autoPanel === "chat" && canOpenChat) {
       setActionModal("message");
       setHasHandledAutoPanel(true);
       return;
@@ -808,7 +815,7 @@ const TaskDetail = () => {
     if (!autoPanel) {
       setHasHandledAutoPanel(true);
     }
-  }, [autoPanel, chatId, hasHandledAutoPanel, reviewSummary?.can_leave_review]);
+  }, [autoPanel, canOpenChat, hasHandledAutoPanel, reviewSummary?.can_leave_review]);
 
   const roleStageSummary = useMemo(() => {
     if (!task) {
@@ -1354,9 +1361,16 @@ const TaskDetail = () => {
                       });
                       return;
                     }
+                    if (!isChatParticipant) {
+                      toast({
+                        title: "Чат недоступен",
+                        description: "Чат доступен только заказчику и выбранному исполнителю.",
+                      });
+                      return;
+                    }
                     setActionModal("message");
                   }}
-                  disabled={!chatId}
+                  disabled={!canOpenChat}
                   className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <MessageSquare className="w-4 h-4" />
@@ -1912,7 +1926,7 @@ const TaskDetail = () => {
             <DialogDescription>Чат доступен после выбора исполнителя.</DialogDescription>
           </DialogHeader>
 
-          {chatId ? (
+          {canOpenChat ? (
             <div className="space-y-4">
               <div className="max-h-64 overflow-y-auto space-y-2 rounded-lg border border-border bg-secondary/40 p-3">
                 {messagesQuery.isLoading && (
@@ -1975,9 +1989,13 @@ const TaskDetail = () => {
                 </button>
               </form>
             </div>
-          ) : (
+          ) : !chatId ? (
             <div className="text-sm text-muted-foreground">
               Чат ещё не создан. Он будет доступен после назначения исполнителя по задаче.
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">
+              Чат доступен только заказчику и выбранному исполнителю.
             </div>
           )}
         </DialogContent>
