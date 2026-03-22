@@ -407,7 +407,6 @@ def create_task_review(
     return platform_service.create_task_review(task_id, current_user, payload.model_dump())
 
 @router.get("/notifications", tags=["notifications"])
-@router.get("/notifications", tags=["notifications"])
 def list_notifications(
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     status: str = Query(default="all"),

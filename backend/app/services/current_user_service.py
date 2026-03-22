@@ -39,13 +39,9 @@ class CurrentUserService:
 
     def resolve_current_user(
         self,
-        raw_authorization: str | None = None,
-        raw_user_id: str | None = None,
-        authorization: str | None = None,
+        raw_authorization: str | None,
     ) -> CurrentUserContext:
-        _ = raw_user_id
-        auth_header = raw_authorization or authorization
-        bearer_token = extract_bearer_token(auth_header)
+        bearer_token = extract_bearer_token(raw_authorization)
         if not bearer_token:
             raise AuthenticationError("Authorization header with Bearer token is required")
 
@@ -53,4 +49,4 @@ class CurrentUserService:
         return self._build_current_user_context(user_id)
 
     def resolve_authenticated_user(self, raw_authorization: str | None) -> CurrentUserContext:
-        return self.resolve_current_user(raw_authorization=raw_authorization)
+        return self.resolve_current_user(raw_authorization)
