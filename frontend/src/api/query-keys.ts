@@ -11,6 +11,7 @@ export const queryKeys = {
   offers: (taskId: number) => ["offers", taskId] as const,
   counterOffers: (offerId: number) => ["counter-offers", offerId] as const,
   analyticsCategory: (category: string) => ["analytics", "category", category] as const,
+  analyticsCategoryDeals: (category: string, limit: number) => ["analytics", "category", category, "deals", limit] as const,
   notifications: (status: "all" | "unread") => ["notifications", status] as const,
   unreadNotificationsCount: ["notifications", "unread-count"] as const,
   chats: ["chats"] as const,

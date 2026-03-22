@@ -513,6 +513,15 @@ def get_category_analytics(
     return platform_service.get_category_analytics(category, current_user)
 
 
+@router.get("/analytics/categories/{category}/deals", tags=["analytics"])
+def get_category_deals(
+    category: str,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+    limit: int = Query(default=24, ge=1, le=500),
+) -> dict:
+    return platform_service.get_category_deals(category, current_user, limit=limit)
+
+
 @router.websocket("/ws/notifications")
 async def notifications_ws(
     websocket: WebSocket,
