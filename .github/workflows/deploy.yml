@@ -22,12 +22,10 @@ jobs:
       - name: Deploy on server
         shell: bash
         run: |
-          ssh -p "${{ secrets.SERVER_PORT }}" \
-            -o SetEnv="DEPLOY_PATH=${{ secrets.DEPLOY_PATH }}" \
-            "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" bash << 'ENDSSH'
+          ssh -p "${{ secrets.SERVER_PORT }}" "${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}" bash << 'ENDSSH'
             set -e
+            DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
             TMP_DIR="${DEPLOY_PATH}.tmp"
-            ENV_FILE="/home/dodo/environment/.env"
 
             echo "=== Removing old temp directory if exists ==="
             rm -rf "$TMP_DIR"
@@ -36,14 +34,6 @@ jobs:
             git clone --depth=1 --branch main \
               "$(git -C "$DEPLOY_PATH" remote get-url origin)" \
               "$TMP_DIR"
-
-            echo "=== Copying environment file into fresh clone ==="
-            if [ -f "$ENV_FILE" ]; then
-              cp "$ENV_FILE" "$TMP_DIR/.env"
-              echo "Environment file copied."
-            else
-              echo "Warning: $ENV_FILE not found, skipping."
-            fi
 
             echo "=== Stopping and removing Docker Compose containers and images ==="
             cd "$DEPLOY_PATH"
@@ -66,7 +56,3 @@ jobs:
           ENDSSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
