@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, Clock, DollarSign, Star, TrendingUp } from "lucide-react";
+import { BarChart3, Clock, DollarSign, TrendingUp } from "lucide-react";
 
 import { queryKeys } from "@/api/query-keys";
 import { analyticsService } from "@/api/services/analytics";
 import type { CategoryAnalyticsDto } from "@/api/types";
+import { CategoryDealHistoryWidget, CategoryDealPriceChartWidget } from "@/components/analytics/DealPriceChartWidget";
 import { CategoryChips } from "@/components/CategoryChips";
 import { CreateRequestModal } from "@/components/CreateRequestModal";
 import { TopNav } from "@/components/TopNav";
@@ -47,7 +47,6 @@ function aggregateAnalytics(items: CategoryAnalyticsDto[]): CategoryAnalyticsDto
 const Analytics = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [category, setCategory] = useState("all");
-  const [selectedRange, setSelectedRange] = useState<string | null>(null);
 
   const categoryIds = CATEGORIES.filter((item) => item.id !== "all").map((item) => item.id);
 
@@ -80,19 +79,12 @@ const Analytics = () => {
     return successfulPayloads[0] ?? null;
   }, [category, successfulPayloads]);
 
-  useEffect(() => {
-    setSelectedRange(null);
-  }, [category]);
-
   const retryRelevantQueries = () => {
     relevantQueries.forEach((query) => {
       void query.refetch();
     });
   };
-
-  const histogram = analytics?.price_histogram ?? [];
-  const selectedHistogram = histogram.find((item) => item.range === selectedRange) ?? null;
-  const totalHistogramCount = histogram.reduce((sum, item) => sum + item.count, 0);
+  const selectedCategoryMeta = CATEGORIES.find((item) => item.id === category) ?? null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -112,8 +104,8 @@ const Analytics = () => {
 
         <CategoryChips active={category} onChange={setCategory} />
 
-        <div className="mt-5 flex flex-col gap-6 xl:flex-row">
-          <div className="flex-1 min-w-0 space-y-5">
+        <div className="mt-5">
+          <div className="space-y-5">
             {isLoading && (
               <>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -183,111 +175,17 @@ const Analytics = () => {
                   ))}
                 </div>
 
-                <div className="card-surface p-6">
-                  <h3 className="font-semibold text-sm text-foreground mb-4">Распределение цен по завершённым сделкам</h3>
-                  {histogram.length === 0 ? (
-                    <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">
-                      Нет данных о диапазонах цен.
-                    </div>
-                  ) : (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={histogram}>
-                          <XAxis dataKey="range" tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fontSize: 12, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                          <Tooltip
-                            contentStyle={{
-                              background: "hsl(0, 0%, 100%)",
-                              border: "1px solid hsl(220, 13%, 91%)",
-                              borderRadius: "8px",
-                              fontSize: "13px",
-                            }}
-                            formatter={(value: number) => [`${value} сделок`, "Количество"]}
-                          />
-                          <ReferenceLine y={Math.round((Math.max(...histogram.map((entry) => entry.count), 0)) / 2)} stroke="hsl(217, 91%, 60%)" strokeDasharray="4 4" />
-                          <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[6, 6, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </div>
+                <CategoryDealPriceChartWidget
+                  category={category}
+                  categoryLabel={selectedCategoryMeta?.label}
+                />
 
-                <div className="card-surface">
-                  <div className="p-4 border-b border-border">
-                    <h3 className="font-semibold text-sm text-foreground">Диапазоны цен</h3>
-                  </div>
-                  {histogram.length === 0 ? (
-                    <div className="p-4 text-sm text-muted-foreground">Диапазоны пока недоступны.</div>
-                  ) : (
-                    histogram.map((item, i) => (
-                      <div
-                        key={item.range}
-                        onClick={() => setSelectedRange(item.range === selectedRange ? null : item.range)}
-                        className={`cursor-pointer p-4 transition-colors ${
-                          selectedRange === item.range ? "bg-primary/5" : "hover:bg-accent"
-                        } ${i > 0 ? "border-t border-border" : ""}`}
-                      >
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="text-base">📊</span>
-                            <div>
-                              <div className="text-sm font-medium text-foreground">Диапазон {item.range} ₽</div>
-                              <div className="text-xs text-muted-foreground">Сделки в этом диапазоне</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4 text-left sm:text-right">
-                            <div className="w-auto text-sm font-semibold text-foreground sm:w-16">{item.count}</div>
-                            <span className="chip text-[10px] px-2 py-0.5 status-done">сделок</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <CategoryDealHistoryWidget
+                  category={category}
+                  categoryLabel={selectedCategoryMeta?.label}
+                />
+
               </>
-            )}
-          </div>
-
-          <div className="w-full shrink-0 xl:w-80">
-            {selectedHistogram ? (
-              <div className="card-surface animate-fade-in p-5 xl:sticky xl:top-20">
-                <h3 className="font-semibold text-sm text-foreground mb-4">Детали диапазона</h3>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] text-muted-foreground">Диапазон</div>
-                    <div className="text-sm font-medium text-foreground">{selectedHistogram.range} ₽</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-muted-foreground">Сделок</div>
-                    <div className="text-lg font-semibold text-foreground">{selectedHistogram.count}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-muted-foreground">Доля</div>
-                    <div className="text-sm text-foreground">
-                      {totalHistogramCount > 0
-                        ? `${Math.round((selectedHistogram.count / totalHistogramCount) * 100)}%`
-                        : "—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-muted-foreground">Средняя цена категории</div>
-                    <div className="text-sm text-foreground">{analytics ? `${analytics.avg_price_amount} ₽` : "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-muted-foreground">Рейтинг диапазона</div>
-                    <div className="flex items-center gap-0.5">
-                      <Star className="w-3.5 h-3.5 text-warning fill-warning" />
-                      <span className="text-xs text-foreground font-medium">
-                        {selectedHistogram.count > 0 ? "Актуальный" : "Редкий"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="card-surface p-5 text-center">
-                <p className="text-sm text-muted-foreground">Выберите диапазон для просмотра деталей</p>
-              </div>
             )}
           </div>
         </div>

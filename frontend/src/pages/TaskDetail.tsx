@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Clock, MessageSquare, Send, Star } from "lucide-react";
-import { Bar, BarChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { queryKeys } from "@/api/query-keys";
 import { analyticsService } from "@/api/services/analytics";
@@ -120,7 +120,6 @@ const TaskDetail = () => {
   const task = taskQuery.data ? mapTaskDtoToUi(taskQuery.data) : null;
   const categoryAnalytics = taskQuery.data?.analytics ?? analyticsQuery.data ?? null;
   const analyticsHistogram = categoryAnalytics?.price_histogram ?? [];
-  const analyticsMaxCount = Math.max(...analyticsHistogram.map((entry) => entry.count), 0);
   const isAnalyticsLoading = Boolean(analyticsCategory) && !taskQuery.data?.analytics && analyticsQuery.isLoading;
   const hasAnalyticsError = !categoryAnalytics && analyticsQuery.isError;
 
@@ -778,6 +777,19 @@ const TaskDetail = () => {
     : taskQuery.data?.customer?.id
       ? `/users/${taskQuery.data.customer.id}`
       : null;
+  const offers = offersQuery.data ?? [];
+  const offersCount = offersQuery.isLoading ? task?.offersCount ?? 0 : offers.length;
+  const analyticsSummaryItems = categoryAnalytics
+    ? [
+        { label: "Медиана", value: `${categoryAnalytics.median_price_amount} ₽` },
+        { label: "Средняя", value: `${categoryAnalytics.avg_price_amount} ₽` },
+        { label: "Сделок", value: String(categoryAnalytics.completed_tasks_count) },
+        { label: "Время", value: `${Math.round(categoryAnalytics.avg_completion_minutes / 60 * 10) / 10} ч` },
+      ]
+    : [];
+  const analyticsPriceRange = categoryAnalytics
+    ? `${categoryAnalytics.min_price_amount}–${categoryAnalytics.max_price_amount} ₽`
+    : null;
 
   useEffect(() => {
     setHasHandledAutoPanel(false);
@@ -1034,85 +1046,212 @@ const TaskDetail = () => {
               </div>
 
               <div className="card-surface p-4 sm:p-6">
-                <h3 className="font-semibold text-sm text-foreground mb-4">Аналитика категории: {task.categoryIcon} История сделок</h3>
-
-                {isAnalyticsLoading ? (
-                  <div className="space-y-4">
-                    <div className="h-48 rounded-lg bg-secondary animate-pulse" />
-                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                      {Array.from({ length: 4 }).map((_, index) => (
-                        <div key={index} className="h-20 rounded-lg bg-secondary animate-pulse" />
-                      ))}
+                <div className="flex flex-col gap-3 border-b border-border/70 pb-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1 text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      Отклики
+                      <span className="rounded-full bg-background px-2 py-0.5 text-foreground">{offersCount}</span>
                     </div>
+                    <h3 className="mt-3 text-base font-semibold text-foreground">Отклики по задаче</h3>
+                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                      {isTaskOwner
+                        ? "Сравните предложения, откройте переговоры и выберите исполнителя прямо из списка."
+                        : ownPendingOffer
+                          ? "Ваш отклик уже в списке. Здесь удобно следить за конкурентными условиями и возвращаться к переговорам."
+                          : "Здесь собраны все предложения по задаче. Можно быстро понять рынок и условия других исполнителей."}
+                    </p>
                   </div>
-                ) : hasAnalyticsError ? (
-                  <div className="p-4 rounded-lg border border-border bg-secondary/40">
-                    <div className="text-sm text-foreground">Не удалось загрузить аналитику категории.</div>
+
+                  {!offersQuery.isLoading && !offersQuery.isError && offers.length > 0 && (
+                    <div className="text-xs text-muted-foreground">Все отклики показаны на одной странице.</div>
+                  )}
+                </div>
+
+                {offersQuery.isLoading && (
+                  <div className="mt-5 space-y-4">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="h-44 rounded-2xl bg-secondary animate-pulse" />
+                    ))}
+                  </div>
+                )}
+
+                {!offersQuery.isLoading && offersQuery.isError && (
+                  <div className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                    Не удалось загрузить отклики.
                     <button
                       type="button"
-                      onClick={() => void analyticsQuery.refetch()}
-                      className="mt-2 text-xs text-primary hover:text-primary/80"
+                      onClick={() => void offersQuery.refetch()}
+                      className="ml-2 font-medium text-primary hover:text-primary/80"
                     >
                       Повторить
                     </button>
                   </div>
-                ) : categoryAnalytics ? (
-                  <>
-                    {analyticsHistogram.length > 0 ? (
-                      <div className="h-48 mb-4">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analyticsHistogram}>
-                            <XAxis dataKey="range" tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                            <YAxis tick={{ fontSize: 11, fill: "hsl(220, 9%, 46%)" }} axisLine={false} tickLine={false} />
-                            <Tooltip
-                              contentStyle={{
-                                background: "hsl(0, 0%, 100%)",
-                                border: "1px solid hsl(220, 13%, 91%)",
-                                borderRadius: "8px",
-                                fontSize: "12px",
-                              }}
-                              formatter={(value: number) => [`${value} сделок`, "Количество"]}
-                            />
-                            <ReferenceLine
-                              y={Math.round(analyticsMaxCount / 2)}
-                              stroke="hsl(217, 91%, 60%)"
-                              strokeDasharray="4 4"
-                              label={{ value: "Ориентир", position: "right", fontSize: 11, fill: "hsl(217, 91%, 60%)" }}
-                            />
-                            <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : (
-                      <div className="h-48 mb-4 rounded-lg border border-border bg-secondary/40 flex items-center justify-center text-sm text-muted-foreground">
-                        По этой категории пока нет гистограммы завершённых сделок.
-                      </div>
-                    )}
+                )}
 
-                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-                      {[
-                        { label: "Медианная цена", value: `${categoryAnalytics.median_price_amount} ₽` },
-                        { label: "Средняя цена", value: `${categoryAnalytics.avg_price_amount} ₽` },
-                        { label: "Диапазон", value: `${categoryAnalytics.min_price_amount}–${categoryAnalytics.max_price_amount} ₽` },
-                        { label: "Среднее время", value: `${Math.round(categoryAnalytics.avg_completion_minutes / 60 * 10) / 10} часа` },
-                      ].map((s) => (
-                        <div key={s.label} className="p-3 rounded-lg bg-secondary">
-                          <div className="text-base font-semibold text-foreground">{s.value}</div>
-                          <div className="text-[11px] text-muted-foreground">{s.label}</div>
+                {!offersQuery.isLoading && !offersQuery.isError && offers.length === 0 && (
+                  <div className="mt-5 rounded-2xl border border-dashed border-border bg-secondary/35 p-6 text-center">
+                    <div className="text-sm font-medium text-foreground">Пока нет откликов</div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Как только появятся первые предложения, они сразу займут это пространство.
+                    </p>
+                  </div>
+                )}
+
+                {!offersQuery.isLoading && !offersQuery.isError && offers.length > 0 && (
+                  <div className="mt-5 space-y-4">
+                    {offers.map((offer) => {
+                      const performerName = (offer.performer?.full_name ?? "Исполнитель").trim();
+                      const performerInitial = performerName.charAt(0).toUpperCase() || "И";
+                      const isOwnPendingOffer = offer.performer?.id === user?.id && offer.status === "pending";
+                      const canCounterOffer = offer.status === "pending" && (isTaskOwner || offer.performer?.id === user?.id);
+                      const paymentBadge = offer.payment_type === "fixed_price"
+                        ? offer.price_amount !== null && offer.price_amount !== undefined
+                          ? `${offer.price_amount} ₽`
+                          : "Цена уточняется"
+                        : offer.payment_type === "barter"
+                          ? "Бартер"
+                          : "Договорная цена";
+                      const paymentTypeLabel = offer.payment_type === "fixed_price"
+                        ? "Фиксированная стоимость"
+                        : offer.payment_type === "barter"
+                          ? "Обмен или взаимная услуга"
+                          : "Цена обсуждается";
+
+                      return (
+                        <div
+                          key={offer.id}
+                          className="rounded-2xl border border-border/80 bg-gradient-to-br from-card via-card to-secondary/35 p-4 shadow-sm sm:p-5"
+                        >
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-start gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
+                                  {performerInitial}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {offer.performer?.id ? (
+                                      <Link
+                                        to={offer.performer.id === user?.id ? "/profile" : `/users/${offer.performer.id}`}
+                                        className="text-sm font-semibold text-foreground hover:text-primary transition-colors"
+                                      >
+                                        {performerName}
+                                      </Link>
+                                    ) : (
+                                      <div className="text-sm font-semibold text-foreground">{performerName}</div>
+                                    )}
+
+                                    <span className={`chip text-[10px] px-2 py-0.5 ${getOfferStatusClass(offer.status)}`}>
+                                      {OFFER_STATUS_LABELS[offer.status] ?? offer.status}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-1 text-xs text-muted-foreground">{paymentTypeLabel}</div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 rounded-xl bg-secondary/70 p-4 text-sm leading-6 text-foreground whitespace-pre-line">
+                                {offer.message || "Исполнитель готов обсудить детали по задаче."}
+                              </div>
+
+                              {offer.payment_type === "barter" && offer.barter_description && (
+                                <div className="mt-3 rounded-xl border border-border/70 bg-background/90 p-3 text-sm text-muted-foreground">
+                                  Условия обмена: <span className="text-foreground">{offer.barter_description}</span>
+                                </div>
+                              )}
+
+                              <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                                <span className="rounded-full border border-border bg-background px-3 py-1.5 text-muted-foreground">
+                                  {paymentTypeLabel}
+                                </span>
+                                {offer.payment_type === "fixed_price" && (
+                                  <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-foreground">
+                                    {paymentBadge}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 lg:w-44">
+                              <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Условия</div>
+                              <div className="mt-2 text-base font-semibold text-foreground">{paymentBadge}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">
+                                {offer.status === "accepted"
+                                  ? "Исполнитель выбран"
+                                  : offer.status === "rejected"
+                                    ? "Предложение отклонено"
+                                    : offer.status === "withdrawn"
+                                      ? "Исполнитель отозвал отклик"
+                                      : "Можно продолжать обсуждение"}
+                              </div>
+                            </div>
+                          </div>
+
+                          {(isOwnPendingOffer || canCounterOffer || (canChoosePerformer && offer.status === "pending")) && (
+                            <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/70 pt-4">
+                              {isOwnPendingOffer && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingOfferId(offer.id);
+                                      setEditOfferMessage(offer.message ?? "");
+                                      setEditOfferPaymentType(offer.payment_type);
+                                      setEditOfferPriceValue(offer.price_amount ? String(offer.price_amount) : "");
+                                      setEditOfferBarterDescription(offer.barter_description ?? "");
+                                      setEditOfferError(null);
+                                      setActionModal("edit-offer");
+                                    }}
+                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                  >
+                                    Редактировать
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => withdrawOfferMutation.mutate(offer.id)}
+                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                    disabled={withdrawOfferMutation.isPending}
+                                  >
+                                    Отозвать отклик
+                                  </button>
+                                </>
+                              )}
+
+                              {canCounterOffer && (
+                                <Link
+                                  to={`/task/${numericTaskId}/offers/${offer.id}/negotiation`}
+                                  className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent sm:text-sm"
+                                >
+                                  Открыть переговоры
+                                </Link>
+                              )}
+
+                              {canChoosePerformer && offer.status === "pending" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => acceptOfferMutation.mutate(offer.id)}
+                                    className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:text-sm"
+                                    disabled={acceptOfferMutation.isPending}
+                                  >
+                                    Выбрать исполнителя
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => rejectOfferMutation.mutate(offer.id)}
+                                    className="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground sm:text-sm"
+                                    disabled={rejectOfferMutation.isPending}
+                                  >
+                                    Отклонить
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      ))}
-                    </div>
-
-                    <div className="mt-5 pt-5 border-t border-border">
-                      <h4 className="text-sm font-medium text-foreground mb-3">Последние сделки</h4>
-                      <div className="p-3 rounded-lg border border-border bg-secondary/50 text-sm text-muted-foreground">
-                        API пока возвращает только агрегированную аналитику по категории. Список отдельных последних сделок для этой карточки ещё недоступен.
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="p-4 rounded-lg border border-border bg-secondary/40 text-sm text-muted-foreground">
-                    Для этой категории аналитика пока не рассчитана.
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1187,8 +1326,8 @@ const TaskDetail = () => {
               )}
             </div>
 
-            <div className="w-full shrink-0 space-y-4 xl:w-80">
-              <div className="card-surface space-y-3 p-5 xl:sticky xl:top-20">
+            <div className="w-full shrink-0 space-y-4 xl:sticky xl:top-20 xl:w-80 xl:self-start">
+              <div className="card-surface space-y-3 p-5">
                 {canRespond && !ownPendingOffer && !isTaskOwner && !isAssignedPerformer && (
                   <>
                     <button
@@ -1334,126 +1473,93 @@ const TaskDetail = () => {
               </div>
 
               <div className="card-surface p-4">
-                <h4 className="text-sm font-semibold text-foreground mb-3">Отклики по задаче</h4>
-
-                {offersQuery.isLoading && (
-                  <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <div key={index} className="h-16 rounded-lg bg-secondary animate-pulse" />
-                    ))}
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-lg text-primary">
+                    {task.categoryIcon}
                   </div>
-                )}
 
-                {!offersQuery.isLoading && offersQuery.isError && (
-                  <div className="text-xs text-destructive">
-                    Не удалось загрузить отклики.
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">Аналитика категории</div>
+                    <h4 className="mt-2 text-sm font-semibold text-foreground">Компактный срез по завершённым сделкам</h4>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Ключевые ориентиры по цене и времени выполнения для этой категории.
+                    </p>
+                  </div>
+                </div>
+
+                {isAnalyticsLoading ? (
+                  <div className="mt-4 space-y-3">
+                    <div className="h-32 rounded-xl bg-secondary animate-pulse" />
+                    <div className="grid grid-cols-2 gap-2">
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="h-16 rounded-xl bg-secondary animate-pulse" />
+                      ))}
+                    </div>
+                  </div>
+                ) : hasAnalyticsError ? (
+                  <div className="mt-4 rounded-xl border border-border bg-secondary/40 p-4">
+                    <div className="text-sm text-foreground">Не удалось загрузить аналитику категории.</div>
                     <button
                       type="button"
-                      onClick={() => void offersQuery.refetch()}
-                      className="ml-2 text-primary hover:text-primary/80"
+                      onClick={() => void analyticsQuery.refetch()}
+                      className="mt-2 text-xs font-medium text-primary hover:text-primary/80"
                     >
                       Повторить
                     </button>
                   </div>
-                )}
+                ) : categoryAnalytics ? (
+                  <>
+                    {analyticsHistogram.length > 0 ? (
+                      <div className="mt-4 h-32 rounded-2xl bg-secondary/60 p-2">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={analyticsHistogram} margin={{ top: 6, right: 4, left: -24, bottom: 0 }}>
+                            <XAxis
+                              dataKey="range"
+                              tick={{ fontSize: 10, fill: "hsl(220, 9%, 46%)" }}
+                              axisLine={false}
+                              tickLine={false}
+                              minTickGap={14}
+                            />
+                            <YAxis hide />
+                            <Tooltip
+                              contentStyle={{
+                                background: "hsl(0, 0%, 100%)",
+                                border: "1px solid hsl(220, 13%, 91%)",
+                                borderRadius: "8px",
+                                fontSize: "12px",
+                              }}
+                              formatter={(value: number) => [`${value} сделок`, "Количество"]}
+                            />
+                            <Bar dataKey="count" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-xl border border-border bg-secondary/40 p-4 text-sm text-muted-foreground">
+                        По этой категории пока нет гистограммы завершённых сделок.
+                      </div>
+                    )}
 
-                {!offersQuery.isLoading && !offersQuery.isError && (offersQuery.data ?? []).length === 0 && (
-                  <div className="text-xs text-muted-foreground">Пока нет откликов.</div>
-                )}
-
-                {!offersQuery.isLoading && !offersQuery.isError && (
-                  <div className="space-y-2">
-                    {(offersQuery.data ?? []).slice(0, 5).map((offer) => {
-                      const isOwnPendingOffer = offer.performer?.id === user?.id && offer.status === "pending";
-                      const canCounterOffer = offer.status === "pending" && (isTaskOwner || offer.performer?.id === user?.id);
-
-                      return (
-                        <div key={offer.id} className="p-2.5 rounded-lg bg-secondary">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            {offer.performer?.id ? (
-                              <Link
-                                to={offer.performer.id === user?.id ? "/profile" : `/users/${offer.performer.id}`}
-                                className="text-xs font-medium text-foreground hover:text-primary transition-colors"
-                              >
-                                {offer.performer?.full_name ?? "Исполнитель"}
-                              </Link>
-                            ) : (
-                              <div className="text-xs font-medium text-foreground">
-                                {offer.performer?.full_name ?? "Исполнитель"}
-                              </div>
-                            )}
-                            <span className={`chip text-[10px] px-1.5 py-0.5 ${getOfferStatusClass(offer.status)}`}>
-                              {OFFER_STATUS_LABELS[offer.status] ?? offer.status}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1 line-clamp-2">{offer.message}</div>
-                          <div className="text-xs text-foreground mt-1">
-                            {offer.payment_type === "fixed_price"
-                              ? `${offer.price_amount ?? "—"} ₽`
-                              : offer.payment_type === "barter"
-                                ? "Бартер"
-                                : "Договорная"}
-                          </div>
-                          {isOwnPendingOffer && (
-                            <div className="mt-2 flex flex-wrap items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingOfferId(offer.id);
-                                  setEditOfferMessage(offer.message ?? "");
-                                  setEditOfferPaymentType(offer.payment_type);
-                                  setEditOfferPriceValue(offer.price_amount ? String(offer.price_amount) : "");
-                                  setEditOfferBarterDescription(offer.barter_description ?? "");
-                                  setEditOfferError(null);
-                                  setActionModal("edit-offer");
-                                }}
-                                className="text-[11px] text-primary hover:text-primary/80"
-                              >
-                                Редактировать
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => withdrawOfferMutation.mutate(offer.id)}
-                                className="text-[11px] text-primary hover:text-primary/80"
-                                disabled={withdrawOfferMutation.isPending}
-                              >
-                                Отозвать отклик
-                              </button>
-                            </div>
-                          )}
-
-                          {canCounterOffer && (
-                            <Link
-                              to={`/task/${numericTaskId}/offers/${offer.id}/negotiation`}
-                              className="mt-2 inline-block text-[11px] text-primary hover:text-primary/80"
-                            >
-                              Открыть переговоры
-                            </Link>
-                          )}
-
-                          {canChoosePerformer && offer.status === "pending" && (
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => acceptOfferMutation.mutate(offer.id)}
-                                className="text-[11px] text-primary hover:text-primary/80"
-                                disabled={acceptOfferMutation.isPending}
-                              >
-                                Выбрать исполнителя
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => rejectOfferMutation.mutate(offer.id)}
-                                className="text-[11px] text-muted-foreground hover:text-foreground"
-                                disabled={rejectOfferMutation.isPending}
-                              >
-                                Отклонить
-                              </button>
-                            </div>
-                          )}
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                      {analyticsSummaryItems.map((item) => (
+                        <div key={item.label} className="rounded-xl bg-secondary px-3 py-3">
+                          <div className="text-sm font-semibold text-foreground">{item.value}</div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">{item.label}</div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
+
+                    <div className="mt-4 rounded-xl border border-border bg-secondary/40 p-3">
+                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">Диапазон цен</div>
+                      <div className="mt-2 text-sm font-semibold text-foreground">{analyticsPriceRange}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        По {categoryAnalytics.completed_tasks_count} завершённым сделкам в категории.
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-border bg-secondary/40 p-4 text-sm text-muted-foreground">
+                    Для этой категории аналитика пока не рассчитана.
                   </div>
                 )}
               </div>
