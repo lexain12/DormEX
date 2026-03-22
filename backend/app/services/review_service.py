@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import DomainValidationError, ForbiddenError
 from ..repositories.notification_repository import NotificationRepository
 from ..repositories.report_repository import ReportRepository
 from ..repositories.review_repository import ReviewRepository
@@ -116,3 +116,11 @@ class ReviewService:
             raise DomainValidationError("Review not found")
         self.user_repository.update_user_rating_summary(review["target_user_id"])
         return review
+
+    def delete_all_reviews_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.review_repository.delete_all_reviews()
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

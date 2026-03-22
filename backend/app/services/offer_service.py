@@ -1,4 +1,4 @@
-from ..core.exceptions import DomainValidationError
+from ..core.exceptions import DomainValidationError, ForbiddenError
 from ..repositories.notification_repository import NotificationRepository
 from ..repositories.offer_repository import OfferRepository
 from ..repositories.task_repository import TaskRepository
@@ -242,3 +242,11 @@ class OfferService:
         if updated is None:
             raise RuntimeError("Offer not found after update")
         return updated
+
+    def delete_all_offers_as_admin(self, current_user: CurrentUserContext) -> None:
+        self._ensure_admin(current_user)
+        self.offer_repository.delete_all_offers()
+
+    def _ensure_admin(self, current_user: CurrentUserContext) -> None:
+        if current_user.role != "admin":
+            raise ForbiddenError("Доступно только администратору")

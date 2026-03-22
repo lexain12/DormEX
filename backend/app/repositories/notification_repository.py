@@ -315,3 +315,10 @@ class NotificationRepository:
             "is_read": row["is_read"],
             "created_at": row["created_at"],
         }
+
+    def delete_all_notifications(self) -> None:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM web_push_subscriptions")
+                cursor.execute("DELETE FROM notifications")
+            connection.commit()

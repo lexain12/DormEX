@@ -143,7 +143,7 @@ def list_registration_dormitories(email: str = Query(..., min_length=3)) -> list
     return platform_service.list_dormitories_by_email(email)
 
 
-@router.post("/admin/accounts", tags=["admin"], include_in_schema=False)
+@router.post("/admin/accounts", tags=["admin"], include_in_schema=True)
 def create_admin_account(
     payload: AdminCreateRequest,
     current_user: Annotated[CurrentUserContext, Depends(get_authenticated_admin_context)],
@@ -481,6 +481,7 @@ def list_notifications(
     offset: int = Query(default=0, ge=0),
 ) -> dict:
     return platform_service.list_notifications(current_user, status, limit, offset)
+
 
 @router.get("/notifications/unread-count", tags=["notifications"])
 def unread_notifications_count(
