@@ -17,7 +17,7 @@ import { InteractionStoreProvider } from "@/context/interaction-store";
 import { ThemeProvider } from "@/components/theme-provider";
 
 const queryClient = new QueryClient();
-const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
+const routerBasename = import.meta.env.BASE_URL || undefined;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

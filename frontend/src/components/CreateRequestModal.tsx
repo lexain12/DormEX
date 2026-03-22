@@ -1,10 +1,9 @@
 import { X } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { tasksService } from "@/api/services/tasks";
 import { useAuth } from "@/context/auth-context";
-import { useInteractionStore } from "@/context/interaction-store";
 import { CATEGORIES, URGENCY_LABELS, type Urgency } from "@/lib/data";
 import { mapUiPaymentModeToApi, mapUiUrgencyToApi } from "@/lib/task-mappers";
 import { toast } from "@/hooks/use-toast";
@@ -14,7 +13,6 @@ interface CreateRequestModalProps {
   onClose: () => void;
 }
 
-type VisibilityMode = "dorm" | "campus" | "floor";
 type PaymentMode = "fixed" | "offers" | "barter";
 
 const CATEGORY_OPTIONS = CATEGORIES.filter((category) => category.id !== "all");
@@ -22,7 +20,6 @@ const CATEGORY_OPTIONS = CATEGORIES.filter((category) => category.id !== "all");
 export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { selectedDorm } = useInteractionStore();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -31,7 +28,6 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("fixed");
   const [price, setPrice] = useState("");
   const [barterDescription, setBarterDescription] = useState("");
-  const [visibility, setVisibility] = useState<VisibilityMode>("dorm");
   const [errors, setErrors] = useState<{
     title?: string;
     description?: string;
@@ -61,20 +57,6 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
     },
   });
 
-  const visibilityLabel = useMemo(() => {
-    const currentDormLabel = user?.dormitory?.name ?? selectedDorm;
-
-    if (visibility === "campus") {
-      return "Весь кампус";
-    }
-
-    if (visibility === "floor") {
-      return `${currentDormLabel}, мой этаж`;
-    }
-
-    return currentDormLabel;
-  }, [selectedDorm, user?.dormitory?.name, visibility]);
-
   const resetForm = () => {
     setTitle("");
     setDescription("");
@@ -83,7 +65,6 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
     setPaymentMode("fixed");
     setPrice("");
     setBarterDescription("");
-    setVisibility("dorm");
     setErrors({});
   };
 
@@ -147,7 +128,7 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
       payment_type: mapUiPaymentModeToApi(paymentMode),
       price_amount: paymentMode === "fixed" ? Number(price) : null,
       barter_description: paymentMode === "barter" ? normalizedBarterDescription : null,
-      visibility: visibility === "campus" ? "university" : "dormitory",
+      visibility: "university",
       dormitory_id: user?.dormitory?.id ?? null,
     });
   };
@@ -296,17 +277,10 @@ export function CreateRequestModal({ open, onClose }: CreateRequestModalProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Видимость</label>
-            <select
-              value={visibility}
-              onChange={(event) => setVisibility(event.target.value as VisibilityMode)}
-              className="w-full h-10 px-3 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring appearance-none"
-            >
-              <option value="dorm">Моё общежитие ({user?.dormitory?.name ?? selectedDorm})</option>
-              <option value="campus">Весь кампус</option>
-              <option value="floor">Только мой этаж</option>
-            </select>
-            <p className="text-[11px] text-muted-foreground mt-1">Публикация: {visibilityLabel}</p>
+            <label className="block text-sm font-medium text-foreground mb-1.5">Публикация</label>
+            <div className="rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-foreground">
+              Заявка будет видна всему кампусу
+            </div>
             {errors.dormitory && <p className="text-[11px] text-destructive mt-1">{errors.dormitory}</p>}
           </div>
 
