@@ -9,10 +9,6 @@ from ..core.auth_tokens import hash_refresh_token, hash_verification_code
 from ..core.database import get_connection
 from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError, TooManyRequestsError
 from ..core.security import hash_password, verify_password
-from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError, TooManyRequestsError
-from ..core.security import hash_password, verify_password
-from ..core.exceptions import AuthenticationError, DomainValidationError, ForbiddenError, TooManyRequestsError
-from ..core.security import hash_password, verify_password
 
 
 UTC = timezone.utc
@@ -3008,6 +3004,14 @@ class PlatformRepository:
         task = cursor.fetchone()
         if task is None:
             raise DomainValidationError("Задача не найдена")
+
+        if (
+            task["visibility"] == "dormitory"
+            and task["dormitory_id"] != current_dormitory_id
+            and task["customer_id"] != current_user_id
+            and task["accepted_offer_performer_id"] != current_user_id
+        ):
+            raise ForbiddenError("Эта задача недоступна для вашего общежития")
 
         return task
 
