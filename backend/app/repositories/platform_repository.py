@@ -2379,55 +2379,6 @@ class PlatformRepository:
         status = self._complete_or_confirm_task(task_id, user_id=user_id)
         return {"status": status}
 
-    def open_task_dispute(self, task_id: int, *, user_id: int, comment: str) -> dict[str, Any]:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                assignment = self._get_assignment_for_task(cursor, task_id, for_update=True)
-                if assignment is None:
-                    raise DomainValidationError("Для задачи ещё нет активного исполнителя")
-                if user_id not in (assignment["customer_id"], assignment["performer_id"]):
-                    raise ForbiddenError("Только участники задачи могут открыть спор")
-
-                cursor.execute(
-                    """
-                    UPDATE task_completion_confirmations
-                    SET
-                        status = 'disputed',
-                        dispute_opened_by_user_id = %s,
-                        dispute_comment = %s,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE task_assignment_id = %s
-                    """,
-                    (user_id, comment.strip(), assignment["id"]),
-                )
-                cursor.execute(
-                    """
-                    UPDATE task_assignments
-                    SET status = 'disputed', updated_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                    """,
-                    (assignment["id"],),
-                )
-
-                recipient_user_id = (
-                    assignment["performer_id"]
-                    if assignment["customer_id"] == user_id
-                    else assignment["customer_id"]
-                )
-                self._insert_notification(
-                    cursor,
-                    user_id=recipient_user_id,
-                    notification_type="task_disputed",
-                    title="По задаче открыт спор",
-                    body=comment.strip()[:180],
-                    entity_type="task",
-                    entity_id=task_id,
-                    payload={"task_id": task_id},
-                )
-            connection.commit()
-
-        return {"status": "disputed"}
-
     def list_task_reviews(
         self,
         task_id: int,

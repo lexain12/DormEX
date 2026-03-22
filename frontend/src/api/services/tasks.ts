@@ -75,11 +75,6 @@ export const tasksService = {
     method: "POST",
   }),
 
-  openDispute: (taskId: number, comment: string) => apiRequest<{ status?: string }>(`/tasks/${taskId}/open-dispute`, {
-    method: "POST",
-    body: { comment },
-  }),
-
   listReviews: async (taskId: number) => {
     const response = await apiRequest<TaskReviewDto[] | { items: TaskReviewDto[] }>(`/tasks/${taskId}/reviews`);
 

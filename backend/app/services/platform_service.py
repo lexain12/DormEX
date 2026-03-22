@@ -283,9 +283,6 @@ class PlatformService:
     def confirm_task_completion(self, task_id: int, current_user: CurrentUserContext) -> dict[str, Any]:
         return self.repository.confirm_task_completion(task_id, user_id=current_user.id)
 
-    def open_task_dispute(self, task_id: int, current_user: CurrentUserContext, comment: str) -> dict[str, Any]:
-        return self.repository.open_task_dispute(task_id, user_id=current_user.id, comment=comment)
-
     def list_task_reviews(self, task_id: int, current_user: CurrentUserContext) -> list[dict[str, Any]]:
         return self.repository.list_task_reviews(
             task_id,

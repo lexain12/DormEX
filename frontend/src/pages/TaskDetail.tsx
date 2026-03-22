@@ -23,7 +23,7 @@ import {
 import { mapTaskDtoToUi } from "@/lib/task-mappers";
 import type { ApiPaymentType, ChatMessageDto, CounterOfferDto, OfferDto, TaskDetailDto } from "@/api/types";
 
-type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "dispute-task" | "review" | null;
+type ActionModal = "service" | "price" | "message" | "counter" | "edit-offer" | "cancel-task" | "review" | null;
 
 const DEMO_POLL_INTERVAL_MS = 3_000;
 
@@ -66,7 +66,6 @@ const TaskDetail = () => {
   const [editOfferPriceValue, setEditOfferPriceValue] = useState("");
   const [editOfferBarterDescription, setEditOfferBarterDescription] = useState("");
   const [cancelReason, setCancelReason] = useState("");
-  const [disputeComment, setDisputeComment] = useState("");
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
 
@@ -76,7 +75,6 @@ const TaskDetail = () => {
   const [counterError, setCounterError] = useState<string | null>(null);
   const [editOfferError, setEditOfferError] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
-  const [disputeError, setDisputeError] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
 
   const numericTaskId = Number(id);
@@ -472,26 +470,6 @@ const TaskDetail = () => {
     },
   });
 
-  const openDisputeMutation = useMutation({
-    mutationFn: (comment: string) => tasksService.openDispute(numericTaskId, comment),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: queryKeys.task(numericTaskId), type: "active" }),
-        queryClient.refetchQueries({ queryKey: ["tasks"], type: "active" }),
-      ]);
-      toast({
-        title: "Спор открыт",
-        description: "Заявка отправлена в модерацию.",
-      });
-      setDisputeComment("");
-      setDisputeError(null);
-      setActionModal(null);
-    },
-    onError: (error) => {
-      setDisputeError(error instanceof Error ? error.message : "Не удалось открыть спор");
-    },
-  });
-
   const createReviewMutation = useMutation({
     mutationFn: (payload: { rating: number; comment: string | null }) => tasksService.createReview(numericTaskId, payload),
     onSuccess: async () => {
@@ -525,7 +503,6 @@ const TaskDetail = () => {
     setCounterError(null);
     setEditOfferError(null);
     setCancelError(null);
-    setDisputeError(null);
     setReviewError(null);
   };
 
@@ -713,19 +690,6 @@ const TaskDetail = () => {
 
     setCancelError(null);
     await cancelTaskMutation.mutateAsync(normalizedReason);
-  };
-
-  const handleDisputeSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-
-    const normalizedComment = disputeComment.trim();
-    if (!normalizedComment) {
-      setDisputeError("Опишите причину спора.");
-      return;
-    }
-
-    setDisputeError(null);
-    await openDisputeMutation.mutateAsync(normalizedComment);
   };
 
   const handleReviewSubmit = async (event: FormEvent) => {
@@ -1424,13 +1388,6 @@ const TaskDetail = () => {
                             ? "Подтвердить, что всё выполнено"
                             : "Подтвердить сдачу работы"}
                     </button>
-                    <button
-                      onClick={() => setActionModal("dispute-task")}
-                      className="w-full h-11 rounded-lg border border-border text-muted-foreground font-medium text-sm hover:bg-accent transition-colors"
-                      disabled={hasOpenDispute}
-                    >
-                      {hasOpenDispute ? "Спор уже открыт" : "Открыть спор"}
-                    </button>
                   </>
                 )}
 
@@ -2027,35 +1984,6 @@ const TaskDetail = () => {
               disabled={cancelTaskMutation.isPending}
             >
               {cancelTaskMutation.isPending ? "Отменяем..." : "Подтвердить отмену"}
-            </button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={actionModal === "dispute-task"} onOpenChange={(open) => { if (!open) closeActionModal(); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Открыть спор</DialogTitle>
-            <DialogDescription>Опишите проблему по выполнению задачи.</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-3" onSubmit={handleDisputeSubmit}>
-            <textarea
-              rows={4}
-              value={disputeComment}
-              onChange={(event) => {
-                setDisputeComment(event.target.value);
-                if (disputeError) setDisputeError(null);
-              }}
-              className="w-full px-3 py-2.5 rounded-lg bg-secondary border border-border text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Например: часть работы не выполнена"
-            />
-            {disputeError && <p className="text-xs text-destructive">{disputeError}</p>}
-            <button
-              type="submit"
-              className="w-full h-11 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
-              disabled={openDisputeMutation.isPending}
-            >
-              {openDisputeMutation.isPending ? "Отправляем..." : "Открыть спор"}
             </button>
           </form>
         </DialogContent>
