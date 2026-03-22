@@ -162,7 +162,7 @@ def list_user_reviews(
     return platform_service.list_user_reviews(user_id)
 
 
-@router.get("/users/{user_id}/tasks", tags=["users"])
+@router.get("/users/{user_id}/tasks")
 def list_user_tasks(
     user_id: int,
     role: str = Query(default="customer"),
@@ -407,6 +407,7 @@ def create_task_review(
     return platform_service.create_task_review(task_id, current_user, payload.model_dump())
 
 @router.get("/notifications", tags=["notifications"])
+@router.get("/notifications", tags=["notifications"])
 def list_notifications(
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
     status: str = Query(default="all"),
@@ -415,6 +416,8 @@ def list_notifications(
 ) -> dict:
     return platform_service.list_notifications(current_user, status, limit, offset)
 
+
+@router.get("/notifications/unread-count", tags=["notifications"])
 @router.get("/notifications/unread-count", tags=["notifications"])
 def unread_notifications_count(
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
