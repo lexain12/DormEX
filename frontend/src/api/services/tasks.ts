@@ -1,6 +1,7 @@
 import { apiRequest } from "@/api/client";
 import type {
   CreateTaskPayload,
+  TaskReviewDto,
   TaskDetailDto,
   TaskListItemDto,
   UserTaskDto,
@@ -77,5 +78,20 @@ export const tasksService = {
   openDispute: (taskId: number, comment: string) => apiRequest<{ status?: string }>(`/tasks/${taskId}/open-dispute`, {
     method: "POST",
     body: { comment },
+  }),
+
+  listReviews: async (taskId: number) => {
+    const response = await apiRequest<TaskReviewDto[] | { items: TaskReviewDto[] }>(`/tasks/${taskId}/reviews`);
+
+    if (Array.isArray(response)) {
+      return response;
+    }
+
+    return response.items ?? [];
+  },
+
+  createReview: (taskId: number, payload: { rating: number; comment: string | null }) => apiRequest<TaskReviewDto>(`/tasks/${taskId}/reviews`, {
+    method: "POST",
+    body: payload,
   }),
 };

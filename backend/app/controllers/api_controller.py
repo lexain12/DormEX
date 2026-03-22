@@ -10,6 +10,7 @@ from ..schemas.api import (
     ChatMessageRequest,
     CreateCounterOfferRequest,
     CreateOfferRequest,
+    CreateTaskReviewRequest,
     CreateTaskRequest,
     EmailCodeRequest,
     EmailCodeVerifyRequest,
@@ -389,6 +390,22 @@ def open_task_dispute(
     return platform_service.open_task_dispute(task_id, current_user, payload.comment)
 
 
+@router.get("/tasks/{task_id}/reviews")
+def list_task_reviews(
+    task_id: int,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> list[dict]:
+    return platform_service.list_task_reviews(task_id, current_user)
+
+
+@router.post("/tasks/{task_id}/reviews")
+def create_task_review(
+    task_id: int,
+    payload: CreateTaskReviewRequest,
+    current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
+) -> dict:
+    return platform_service.create_task_review(task_id, current_user, payload.model_dump())
+
 @router.get("/notifications", tags=["notifications"])
 def list_notifications(
     current_user: Annotated[CurrentUserContext, Depends(get_current_user_context)],
@@ -397,7 +414,6 @@ def list_notifications(
     offset: int = Query(default=0, ge=0),
 ) -> dict:
     return platform_service.list_notifications(current_user, status, limit, offset)
-
 
 @router.get("/notifications/unread-count", tags=["notifications"])
 def unread_notifications_count(
