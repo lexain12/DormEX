@@ -1183,6 +1183,13 @@ class PlatformRepository:
         conditions = ["t.university_id = %s"]
         params: list[Any] = [current_university_id]
 
+        if current_dormitory_id is None:
+            conditions.append("(t.visibility = 'university' OR t.customer_id = %s)")
+            params.append(current_user_id)
+        else:
+            conditions.append("(t.visibility = 'university' OR t.dormitory_id = %s OR t.customer_id = %s)")
+            params.extend([current_dormitory_id, current_user_id])
+
         if filters.get("scope") == "dormitory":
             dormitory_id = filters.get("dormitory_id") or current_dormitory_id
             if dormitory_id is None:
