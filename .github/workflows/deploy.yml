@@ -31,7 +31,7 @@ jobs:
             rm -rf "$TMP_DIR"
 
             echo "=== Cloning repository into temp directory ==="
-            git clone --depth=1 --branch dodo-server \
+            git clone --depth=1 --branch main \
               "$(git -C "$DEPLOY_PATH" remote get-url origin)" \
               "$TMP_DIR"
 
