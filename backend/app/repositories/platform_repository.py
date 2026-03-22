@@ -3059,11 +3059,6 @@ class PlatformRepository:
         normalized_price_amount = price_amount
         normalized_barter_description = barter_description
 
-        if payment_type == "negotiable" and task["payment_type"] in ("fixed_price", "barter"):
-            normalized_payment_type = task["payment_type"]
-            normalized_price_amount = task["price_amount"]
-            normalized_barter_description = task["barter_description"]
-
         if normalized_payment_type == "fixed_price":
             if normalized_price_amount is None or normalized_price_amount <= 0:
                 raise DomainValidationError("Для fixed_price требуется положительная цена")
