@@ -229,7 +229,7 @@ def list_user_reviews(
     return platform_service.list_user_reviews(user_id)
 
 
-@router.get("/users/{user_id}/tasks")
+@router.get("/users/{user_id}/tasks", tags=["users"])
 def list_user_tasks(
     user_id: int,
     role: str = Query(default="customer"),
@@ -482,6 +482,7 @@ def list_notifications(
     offset: int = Query(default=0, ge=0),
 ) -> dict:
     return platform_service.list_notifications(current_user, status, limit, offset)
+
 
 @router.get("/notifications/unread-count", tags=["notifications"])
 def unread_notifications_count(
