@@ -1,6 +1,7 @@
 export const queryKeys = {
   me: ["me"] as const,
   dormitories: ["reference", "dormitories"] as const,
+  authDormitories: (email: string) => ["auth", "dormitories", email] as const,
   userProfile: (userId: number) => ["user", userId, "profile"] as const,
   userReviews: (userId: number) => ["user", userId, "reviews"] as const,
   userTasks: (userId: number, role: string, status: string) => ["user", userId, "tasks", role, status] as const,

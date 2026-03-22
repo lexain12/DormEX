@@ -1,5 +1,6 @@
 import logging
 import os
+import logging
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
